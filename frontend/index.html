@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<!--
+  DBV PDF2Deck — Local OCR · Visual Canvas · PPTX Export
+  Copyright (c) 2026 David Bueno Vallejo · https://davidbuenov.com
+  Licensed under the MIT License. See LICENSE for details.
+-->
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="DBVPDFEditor - Editor interactivo de PDFs con motor OCR integrado offline y exportaciones PPTX.">
+    <title>DBVPDFEditor | Edición Visual y Segura</title>
+    
+    <!-- Política Estricta asumiendo seguridad: Scripts/Estilos internos o self, sin execs sucios -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://localhost:8000; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: blob:;">
+    
+    <link rel="stylesheet" href="styles.css">
+    
+    <!-- Archivo ESM instanciado puramente como Deferred Module -->
+    <script type="module" src="main.js?v=3" defer></script>
+</head>
+<body>
+    <header role="banner">
+        <h1>DBVPDFEditor Open Source</h1>
+        <p>Procesamiento privado mediante OCR y control de edición reactiva.</p>
+    </header>
+
+    <main role="main">
+        <section aria-labelledby="upload-heading">
+        <!-- Panel interactivo de Carga Modificado (Drag & Drop + Consola) -->
+        <section id="upload-panel" aria-labelledby="upload-heading">
+            <h2 id="upload-heading">Carga de Documentos</h2>
+            <p>Arrastra tu Exportación de NotebookLM (.pdf) y suéltala aquí para procesarla 100% offline.</p>
+            
+            <div id="dropzone" class="dropzone-area" role="button" tabindex="0" aria-label="Área para soltar archivos PDF">
+                <input type="file" id="pdf-upload" accept="application/pdf" hidden>
+                <div class="dropzone-content">
+                    <span class="icon" style="font-size: 3rem;">📄</span>
+                    <h3 style="margin-top: 1rem; color: var(--color-primary);">Arrastra y suelta tu PDF aquí</h3>
+                    <p style="color: #4a5568;">o haz clic para explorar tus archivos locales</p>
+                </div>
+            </div>
+            
+            <div class="console-box" id="log-container" hidden>
+                <div class="console-header">🚀 Terminal de Progreso Asíncrono</div>
+                <pre id="log-console"></pre>
+            </div>
+            
+            <!-- Deprecado visualmente pero usable silenciosamente en caso de fallback -->
+            <output id="upload-status" aria-live="assertive" class="status-message" hidden></output>
+        </section>
+
+        <!-- Interfaz principal de edicion interactiva (Inicia oculta) -->
+        <section id="editor-workspace" class="workspace-area" hidden>
+            <!-- TOP RIBBON BAR -->
+            <div class="top-toolbar glass-panel">
+                <!-- Group 1: Edit & Tools -->
+                <div class="toolbar-section">
+                    <span class="toolbar-label">Herramientas</span>
+                    <button id="btn-add-box" class="primary-btn" title="Inyectar Caja Manual">➕ Texto</button>
+                    <div class="tool-group" style="padding: 0.25rem 0.5rem; gap: 0.25rem;">
+                        <button id="btn-undo" class="icon-btn" title="Deshacer (Ctrl+Z)">↩️</button>
+                        <button id="btn-redo" class="icon-btn" title="Rehacer (Ctrl+Y)">↪️</button>
+                    </div>
+                </div>
+
+                <!-- Group 2: AI Magic -->
+                <div class="toolbar-section">
+                    <span class="toolbar-label">Inteligencia Artificial</span>
+                    <div class="tool-group" style="padding: 0.25rem 0.5rem; gap: 0.5rem;">
+                        <input type="password" id="ai-api-key" placeholder="AI API Key (Opcional)" style="width: 15vw; max-width: 140px; font-size: 0.8rem;">
+                        <button id="btn-save-key" title="Guardar Key Localmente" class="icon-btn" style="background: transparent; border: 1px solid rgba(255,255,255,0.2);">💾</button>
+                    </div>
+                    <button id="btn-clean-bg" class="magic-btn" title="Limpiar original eliminando el texto base con Nano Banana">✨ Limpiar Fondo</button>
+                </div>
+                
+                <!-- Group 3: Export -->
+                <div class="toolbar-section" style="border-right: none; margin-left: auto;">
+                    <span class="toolbar-label">Salida</span>
+                    <select id="export-mode-select" title="Modo Exportación">
+                        <option value="only_modified">Modificados Editable</option>
+                        <option value="all_editable">Todo Editable</option>
+                    </select>
+                    <button id="btn-export" class="primary-btn" style="background: linear-gradient(135deg, #10b981, #059669); padding: 0.75rem 1.5rem;">📥 Descargar PPTX/PDF</button>
+                </div>
+            </div>
+            
+            <!-- CONTENEDOR VISUAL PRINCIPAL -->
+            <div id="canvas-container" style="position: relative; background: transparent; border: none; padding: 0;">
+                
+                <!-- Controles Flotantes Superiores -->
+                <div class="canvas-overlays" style="padding-top: 1rem; padding-bottom: 0;">
+                    <!-- Paginación Top -->
+                    <div id="pagination-controls-top" class="pill-control glass-panel" hidden>
+                        <button id="btn-prev-top" title="Página Anterior">⬅️</button>
+                        <span id="page-indicator-top" style="font-size: 0.9rem; min-width: 70px; text-align: center;">Pág 1</span>
+                        <button id="btn-next-top" title="Página Siguiente">➡️</button>
+                    </div>
+                    
+                    <!-- Zoom Top -->
+                    <div id="canvas-zoom-controls-top" class="pill-control glass-panel">
+                        <button id="btn-zoom-out-top" title="Reducir">➖</button>
+                        <span id="zoom-indicator-top" style="font-size: 0.9rem; min-width: 45px; text-align: center;">100%</span>
+                        <button id="btn-zoom-in-top" title="Ampliar">➕</button>
+                        <button id="btn-zoom-reset-top" style="font-size: 0.8rem; margin-left: 5px;">Auto</button>
+                    </div>
+                </div>
+
+                <!-- Canvas Central -->
+                <div id="canvas-wrapper">
+                    <canvas id="pdf-canvas">El navegador no soporta HTML5 Canvas :(</canvas>
+                </div>
+
+                <!-- Controles Flotantes sobre Canvas (Pildoras) -->
+                <div class="canvas-overlays">
+                    <!-- Zoom -->
+                    <div id="canvas-zoom-controls" class="pill-control glass-panel">
+                        <button id="btn-zoom-out" title="Reducir">➖</button>
+                        <span id="zoom-indicator" style="font-size: 0.9rem; min-width: 45px; text-align: center;">100%</span>
+                        <button id="btn-zoom-in" title="Ampliar">➕</button>
+                        <button id="btn-zoom-reset" style="font-size: 0.8rem; margin-left: 5px;">Auto</button>
+                    </div>
+
+                    <!-- Paginación -->
+                    <div id="pagination-controls" class="pill-control glass-panel" hidden>
+                        <button id="btn-prev" title="Página Anterior">⬅️</button>
+                        <span id="page-indicator" style="font-size: 0.9rem; min-width: 70px; text-align: center;">Pág 1</span>
+                        <button id="btn-next" title="Página Siguiente">➡️</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Barra flotante de herramientas de diseño JS -->
+        <div id="floating-toolbar" class="floating-toolbar glass-panel" hidden>
+            <h4>✏️ Edición Visual</h4>
+            
+            <div id="tb-warning-non-native" hidden>
+                ⚠️ Editando zona rasterizada. Posible pérdida de nitidez nativa.
+            </div>
+            
+            <div class="toolbar-field">
+                <label>Contenido</label>
+                <textarea id="tb-text" rows="3" placeholder="Inserta aquí tu texto..."></textarea>
+            </div>
+            
+            <div class="toolbar-row">
+                <div class="toolbar-field" style="flex-grow: 1;">
+                    <label>Tipografía</label>
+                    <select id="tb-font">
+                        <option value="system-ui">San Francisco / UI</option>
+                        <option value="Arial">Arial</option>
+                        <option value="Times New Roman">Times New</option>
+                        <option value="Courier New">Courier</option>
+                        <option value="Georgia">Georgia</option>
+                        <option value="Trebuchet MS">Trebuchet</option>
+                    </select>
+                </div>
+                <div class="toolbar-field">
+                    <label>Tamaño</label>
+                    <input type="number" id="tb-size" min="8" max="200" step="0.01" value="16" style="width: 110px; padding: 0.4rem 0.2rem 0.4rem 0.6rem;">
+                </div>
+            </div>
+            
+            <div class="toolbar-row">
+                <div class="toolbar-field">
+                    <label>Estilos</label>
+                    <div style="display: flex; gap: 15px; background: rgba(0,0,0,0.2); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                        <label class="checkbox-modern"><input type="checkbox" id="tb-bold"> Negrita</label>
+                        <label class="checkbox-modern"><input type="checkbox" id="tb-italic"> Cursiva</label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="toolbar-row">
+                <div class="toolbar-field">
+                    <label>Letra</label>
+                    <div class="color-picker-group">
+                        <input type="color" id="tb-color" value="#000000">
+                    </div>
+                </div>
+                <div class="toolbar-field">
+                    <label>Fondo</label>
+                    <div class="color-picker-group">
+                        <input type="color" id="tb-bg" value="#ffffff">
+                        <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.2); margin: 0 4px;"></div>
+                        <label class="checkbox-modern" style="margin: 0;" title="Fondo Transparente"><input type="checkbox" id="tb-bg-transparent"> Transparente</label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tb-actions">
+               <button id="tb-close" style="background:#475569; color:white; width: 40px;" title="Descartar Cambios">✖</button>
+               <button id="tb-save" style="background:linear-gradient(135deg, #10b981, #059669); color:white; flex-grow:1;" title="Guardar Bloque">✓ Confirmar Edición</button>
+            </div>
+        </div>    
+    </main>
+
+    <footer role="contentinfo">
+        <p>⚡ Renderizado Offline. Privacidad Zero-Trust.</p>
+        <p><small>&copy; 2026 DBVPDFEditor - Antigravity Pro</small></p>
+    </footer>
+</body>
+</html>

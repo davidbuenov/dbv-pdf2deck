@@ -1,0 +1,94 @@
+# =============================================================================
+# DBV PDF2Deck — .gitignore
+# =============================================================================
+
+# ----------------------------------------------------------------------------
+# Documentación interna de desarrollo (NO publicar)
+# ----------------------------------------------------------------------------
+docs_david/
+
+# ----------------------------------------------------------------------------
+# Archivos de prueba y scripts temporales
+# ----------------------------------------------------------------------------
+test_files/
+debug_pdf.py
+test_dimensions.py
+test_rect_bug.py
+*.log
+
+# ----------------------------------------------------------------------------
+# Entorno virtual Python
+# ----------------------------------------------------------------------------
+backend/venv/
+venv/
+.env
+.venv
+env/
+
+# ----------------------------------------------------------------------------
+# Caché de Python
+# ----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# ----------------------------------------------------------------------------
+# Archivos generados en tiempo de ejecución
+# ----------------------------------------------------------------------------
+# Carpetas de estado creadas por start_dev.bat
+backend/Accediendo
+backend/Instalando
+backend/Despegando
+frontend/Accediendo
+frontend/Instalando
+frontend/Despegando
+Limpiando
+Terminando
+
+# PDFs y archivos de usuario subidos (no son parte del código)
+*.pdf
+*.pptx
+*.zip
+
+# ----------------------------------------------------------------------------
+# IDEs y editores
+# ----------------------------------------------------------------------------
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+.idea/
+*.swp
+*.swo
+*~
+
+# Pyright config SÍ se incluye (útil para colaboradores)
+# pyrightconfig.json  ← NO ignorado intencionalmente
+
+# ----------------------------------------------------------------------------
+# Sistema operativo
+# ----------------------------------------------------------------------------
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS (por si algún colaborador usa Mac)
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ----------------------------------------------------------------------------
+# Modelos descargados por EasyOCR (pueden pesar cientos de MB)
+# ----------------------------------------------------------------------------
+# EasyOCR los descarga en el home del usuario, no en el proyecto,
+# pero por si acaso alguien los mueve aquí:
+*.pth
+*.pt
+models/

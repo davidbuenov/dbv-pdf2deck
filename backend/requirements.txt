@@ -1,0 +1,33 @@
+# Índice extra para buscar versiones con soporte GPU CUDA 12.1 en Windows
+--extra-index-url https://download.pytorch.org/whl/cu121
+
+# Dependencias base para el backend (Python 3.10 a 3.12 recomendado)
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+
+# Manejo en memoria y procesamiento de PDFs
+PyMuPDF>=1.23.0
+
+# Generación de exportaciones a diapositivas
+python-pptx>=0.6.23
+
+# Manipulacion auxiliar de imágenes y visuales
+Pillow>=10.2.0
+
+# Motor de OCR estable con soporte CUDA (GPU) o CPU
+easyocr>=1.7.1
+torch
+torchvision
+torchaudio
+
+# Manipulacion auxiliar y exportación avanzada a Microsoft Office Open XML
+python-pptx>=0.6.23
+
+
+# Linters y herramientas de calidad
+ruff
+mypy
+
+# IA Generativa (Flash Image Preview "Nano Banana")
+google-genai>=1.0.0
