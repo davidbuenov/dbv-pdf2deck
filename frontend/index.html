@@ -8,8 +8,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="DBV PDF2Deck - Editor interactivo de PDFs con motor OCR integrado offline y exportaciones PPTX.">
-    <title>DBV PDF2Deck | Edición Visual y Segura</title>
+    <meta name="description" content="DBV PDF2Deck — Convierte PDFs de solo imagen en presentaciones PowerPoint editables usando OCR local y un editor visual. 100% offline.">
+    <title>DBV PDF2Deck | Convierte PDFs en PPTX editables</title>
     
     <!-- Política Estricta asumiendo seguridad: Scripts/Estilos internos o self, sin execs sucios -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://localhost:8000; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: blob:;">
@@ -21,23 +21,23 @@
 </head>
 <body>
     <header role="banner">
-        <h1>DBV PDF2Deck Open Source</h1>
-        <p>Procesamiento privado mediante OCR y control de edición reactiva.</p>
+        <h1>DBV PDF2Deck</h1>
+        <p>Convierte PDFs de solo imagen en presentaciones PowerPoint totalmente editables &mdash; con OCR local, sin nube, sin suscripciones.</p>
     </header>
 
     <main role="main">
         <section aria-labelledby="upload-heading">
         <!-- Panel interactivo de Carga Modificado (Drag & Drop + Consola) -->
         <section id="upload-panel" aria-labelledby="upload-heading">
-            <h2 id="upload-heading">Carga de Documentos</h2>
-            <p>Arrastra tu Exportación de NotebookLM (.pdf) y suéltala aquí para procesarla 100% offline.</p>
+            <h2 id="upload-heading">Carga tu PDF</h2>
+            <p>Arrastra una exportación de NotebookLM u otro PDF de solo imagen. Todo el procesamiento ocurre <strong>100% offline</strong> en tu ordenador.</p>
             
             <div id="dropzone" class="dropzone-area" role="button" tabindex="0" aria-label="Área para soltar archivos PDF">
                 <input type="file" id="pdf-upload" accept="application/pdf" hidden>
                 <div class="dropzone-content">
                     <span class="icon" style="font-size: 3rem;">📄</span>
-                    <h3 style="margin-top: 1rem; color: var(--color-primary);">Arrastra y suelta tu PDF aquí</h3>
-                    <p style="color: #4a5568;">o haz clic para explorar tus archivos locales</p>
+                    <h3 style="margin-top: 1rem; color: var(--color-primary);">Arrastra tu PDF aquí</h3>
+                    <p style="color: #4a5568;">o haz clic para explorar tus archivos &mdash; soporta cualquier PDF, incluidas exportaciones de NotebookLM</p>
                 </div>
             </div>
             
@@ -197,6 +197,20 @@
     </main>
 
     <footer role="contentinfo">
+        <div class="social-links">
+            <a href="https://www.linkedin.com/in/davidbueno/" target="_blank" rel="noopener" title="LinkedIn" class="social-link linkedin">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"></path><rect x="2" y="9" width="4" height="12"></rect><circle cx="4" cy="4" r="2"></circle></svg>
+                <span>LinkedIn</span>
+            </a>
+            <a href="https://davidbuenov.com" target="_blank" rel="noopener" title="Website" class="social-link website">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                <span>Website</span>
+            </a>
+            <a href="https://www.youtube.com/@davidbuenov" target="_blank" rel="noopener" title="YouTube" class="social-link youtube">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.42a2.78 2.78 0 0 0-1.94 2C1 8.11 1 12 1 12s0 3.89.46 5.58a2.78 2.78 0 0 0 1.94 2c1.72.42 8.6.42 8.6.42s6.88 0 8.6-.42a2.78 2.78 0 0 0 1.94-2C23 15.89 23 12 23 12s0-3.89-.46-5.58z"></path><polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02"></polygon></svg>
+                <span>YouTube</span>
+            </a>
+        </div>
         <p>⚡ Renderizado Offline. Privacidad Zero-Trust.</p>
         <p><small>&copy; 2026 DBV PDF2Deck - David Bueno Vallejo</small></p>
     </footer>
