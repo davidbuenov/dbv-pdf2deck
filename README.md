@@ -43,6 +43,8 @@ NotebookLM PDF (imagen) → OCR Local → Editor Visual → PowerPoint Editable
 | 🧠 **OCR local** | Motor EasyOCR (PyTorch) integrado. Sin APIs de pago, sin internet requerido. |
 | ⚡ **Aceleración GPU** | Soporte CUDA para tarjetas NVIDIA. El OCR pasa de ~40s a ~4s por página. |
 | 🎨 **Editor Canvas** | Interfaz visual en el navegador. Arrastra, redimensiona y edita cajas de texto. |
+| 🔍 **Multi-selección** | `Ctrl+Click` para seleccionar varios bloques. Igualación de estilos o fusión en uno. |
+| ↖️ **Alineación de texto** | Control izquierda / centro / derecha en cada bloque. Se exporta a PDF y PPTX. |
 | ✨ **IA Generativa** | Función opcional de limpieza de fondos con Gemini (requiere API Key). |
 | 📥 **Exportación dual** | Descarga simultánea en PowerPoint (.pptx) y PDF (vectorial). |
 | ↩️ **Undo / Redo** | Historial de 50 estados. Ctrl+Z / Ctrl+Y en el editor. |
@@ -141,10 +143,13 @@ Abre `http://localhost:5500` en tu navegador y ¡listo!
 ### Editor Visual
 
 1. **Arrastra y suelta** tu PDF en la zona de carga (o haz clic para seleccionarlo).
-2. Espera a que el OCR procese las páginas (4-40 segundos según GPU/CPU).
+2. Espera a que el OCR procese las páginas (4–40 segundos según GPU/CPU).
 3. Haz clic en cualquier caja de texto para editarla.
-4. Usa la barra flotante para cambiar fuente, tamaño, color y fondo.
-5. Navega entre páginas con los controles de paginación.
+4. Usa la barra flotante para cambiar fuente, tamaño, color, fondo y **alineación** (izquierda / centro / derecha).
+5. **Ctrl+Click** en varios bloques para seleccionarlos juntos:
+   - **⚖️ Igualar Estilos**: aplica el mismo tamaño, colores y alineación a todos.
+   - **🔗 Fusionar**: une los bloques en uno solo (texto concatenado con saltos de línea).
+6. Navega entre páginas con los controles de paginación.
 
 ### Exportación
 

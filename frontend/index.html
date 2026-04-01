@@ -171,6 +171,23 @@
                     </div>
                 </div>
             </div>
+
+            <div class="toolbar-row">
+                <div class="toolbar-field">
+                    <label>Alineación</label>
+                    <div class="align-group">
+                        <button class="align-btn active" id="tb-align-left" title="Izquierda">
+                            <svg width="16" height="12" viewBox="0 0 16 12" fill="none"><line x1="0" y1="1.5" x2="16" y2="1.5" stroke="currentColor" stroke-width="1.8"/><line x1="0" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1.8"/><line x1="0" y1="10.5" x2="13" y2="10.5" stroke="currentColor" stroke-width="1.8"/></svg>
+                        </button>
+                        <button class="align-btn" id="tb-align-center" title="Centrar">
+                            <svg width="16" height="12" viewBox="0 0 16 12" fill="none"><line x1="0" y1="1.5" x2="16" y2="1.5" stroke="currentColor" stroke-width="1.8"/><line x1="3" y1="6" x2="13" y2="6" stroke="currentColor" stroke-width="1.8"/><line x1="1.5" y1="10.5" x2="14.5" y2="10.5" stroke="currentColor" stroke-width="1.8"/></svg>
+                        </button>
+                        <button class="align-btn" id="tb-align-right" title="Derecha">
+                            <svg width="16" height="12" viewBox="0 0 16 12" fill="none"><line x1="0" y1="1.5" x2="16" y2="1.5" stroke="currentColor" stroke-width="1.8"/><line x1="6" y1="6" x2="16" y2="6" stroke="currentColor" stroke-width="1.8"/><line x1="3" y1="10.5" x2="16" y2="10.5" stroke="currentColor" stroke-width="1.8"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
             
             <div class="toolbar-row">
                 <div class="toolbar-field">
@@ -193,7 +210,69 @@
                <button id="tb-close" style="background:#475569; color:white; width: 40px;" title="Descartar Cambios">✖</button>
                <button id="tb-save" style="background:linear-gradient(135deg, #10b981, #059669); color:white; flex-grow:1;" title="Guardar Bloque">✓ Confirmar Edición</button>
             </div>
-        </div>    
+        </div>
+
+        <!-- Barra flotante de multi-selección (Ctrl+Click en ≥2 bloques) -->
+        <div id="multi-toolbar" class="floating-toolbar glass-panel" hidden>
+            <h4>🔗 Multi-selección</h4>
+            <p id="mt-count" style="font-size:0.85rem; color:#f97316; margin:0.25rem 0 0.75rem; font-weight:600;">2 bloques seleccionados</p>
+
+            <div class="toolbar-field">
+                <label>Tamaño de fuente común</label>
+                <input type="number" id="mt-size" min="8" max="200" step="0.5" value="16"
+                       style="width:100px; padding:0.4rem 0.2rem 0.4rem 0.6rem;">
+            </div>
+
+            <div class="toolbar-row">
+                <div class="toolbar-field">
+                    <label>Letra</label>
+                    <div class="color-picker-group">
+                        <input type="color" id="mt-color" value="#000000">
+                    </div>
+                </div>
+                <div class="toolbar-field">
+                    <label>Fondo</label>
+                    <div class="color-picker-group">
+                        <input type="color" id="mt-bg" value="#ffffff">
+                        <div style="width:1px;height:20px;background:rgba(255,255,255,0.2);margin:0 4px;"></div>
+                        <label class="checkbox-modern" style="margin:0;" title="Fondo Transparente">
+                            <input type="checkbox" id="mt-bg-transparent"> Transp.
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="toolbar-row">
+                <div class="toolbar-field">
+                    <label>Alineación</label>
+                    <div class="align-group">
+                        <button class="align-btn active" id="mt-align-left" title="Izquierda">
+                            <svg width="16" height="12" viewBox="0 0 16 12" fill="none"><line x1="0" y1="1.5" x2="16" y2="1.5" stroke="currentColor" stroke-width="1.8"/><line x1="0" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1.8"/><line x1="0" y1="10.5" x2="13" y2="10.5" stroke="currentColor" stroke-width="1.8"/></svg>
+                        </button>
+                        <button class="align-btn" id="mt-align-center" title="Centrar">
+                            <svg width="16" height="12" viewBox="0 0 16 12" fill="none"><line x1="0" y1="1.5" x2="16" y2="1.5" stroke="currentColor" stroke-width="1.8"/><line x1="3" y1="6" x2="13" y2="6" stroke="currentColor" stroke-width="1.8"/><line x1="1.5" y1="10.5" x2="14.5" y2="10.5" stroke="currentColor" stroke-width="1.8"/></svg>
+                        </button>
+                        <button class="align-btn" id="mt-align-right" title="Derecha">
+                            <svg width="16" height="12" viewBox="0 0 16 12" fill="none"><line x1="0" y1="1.5" x2="16" y2="1.5" stroke="currentColor" stroke-width="1.8"/><line x1="6" y1="6" x2="16" y2="6" stroke="currentColor" stroke-width="1.8"/><line x1="3" y1="10.5" x2="16" y2="10.5" stroke="currentColor" stroke-width="1.8"/></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tb-actions" style="gap:0.4rem; flex-wrap:wrap;">
+                <button id="mt-close"
+                        style="background:#475569; color:white; width:40px;"
+                        title="Cerrar y deseleccionar todo">✖</button>
+                <button id="mt-equalize"
+                        style="background:linear-gradient(135deg,#f59e0b,#d97706); color:white; flex-grow:1;"
+                        title="Aplicar todos los estilos mostrados a los bloques seleccionados">⚖️ Igualar Estilos</button>
+                <button id="mt-merge"
+                        style="background:linear-gradient(135deg,#6366f1,#4f46e5); color:white; flex-grow:1;"
+                        title="Fusionar todos los bloques seleccionados en uno solo">🔗 Fusionar</button>
+            </div>
+        </div>
+
+
     </main>
 
     <footer role="contentinfo">

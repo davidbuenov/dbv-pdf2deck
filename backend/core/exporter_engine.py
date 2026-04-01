@@ -18,9 +18,14 @@ try:
     from pptx import Presentation
     from pptx.util import Pt
     from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN
     PPTX_AVAILABLE = True
 except ImportError:
     PPTX_AVAILABLE = False
+
+
+ALIGN_MAP_PDF = {"left": 0, "center": 1, "right": 2}
+ALIGN_MAP_PPTX = {"left": None, "center": None, "right": None}  # se rellena tras import
 
 
 def _decode_image(b64_string: str) -> bytes:
@@ -161,8 +166,9 @@ def build_pdf_export(payload: dict) -> bytes:
             if not block.get("bg_transparent", False):
                 new_page.draw_rect(box_rect, color=b_color_norm, fill=b_color_norm)
 
-            current_font_size = fsize
             texto = block.get("text", "")
+            align_str = block.get("text_align", "left")
+            pdf_align = ALIGN_MAP_PDF.get(align_str, 0)
 
             new_page.insert_textbox(
                 expanded_rect, 
@@ -170,7 +176,7 @@ def build_pdf_export(payload: dict) -> bytes:
                 fontsize=current_font_size,
                 fontname=pdf_font, 
                 color=t_color_norm,
-                align=0  # Left align para mejor alineación
+                align=pdf_align
             )
 
     _apply_hidden_pdf_signature(pdf_out)
@@ -273,6 +279,8 @@ def build_pdf_export_from_original(payload: dict, source_pdf_path: Path) -> byte
 
             current_font_size = font_size_pt
             texto = block.get("text", "")
+            align_str = block.get("text_align", "left")
+            pdf_align = ALIGN_MAP_PDF.get(align_str, 0)
             
             # Dibujado definitivo en la página real con el tamaño ideal calculado del usuario
             page.insert_textbox(
@@ -282,7 +290,7 @@ def build_pdf_export_from_original(payload: dict, source_pdf_path: Path) -> byte
                 fontname=font_name,
                 color=text_color,
                 overlay=True,
-                align=0,
+                align=pdf_align,
             )
 
     _apply_hidden_pdf_signature(pdf_out)
@@ -383,6 +391,15 @@ def build_pptx_export(payload: dict) -> bytes:
             
             p = text_frame.paragraphs[0]
             p.text = block.get("text", "")
+
+            # Alineación de párrafo
+            align_str = block.get("text_align", "left")
+            if align_str == "center":
+                p.alignment = PP_ALIGN.CENTER
+            elif align_str == "right":
+                p.alignment = PP_ALIGN.RIGHT
+            else:
+                p.alignment = PP_ALIGN.LEFT
             
             # Factor de conversión Pixel a Puntos PPTX
             # Nota: En PPTX el factor 0.72 es crítico para que la fuente no desborde el layout

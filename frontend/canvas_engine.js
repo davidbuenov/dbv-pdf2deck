@@ -12,6 +12,7 @@ let globalPayload = null;
 let currentActivePageIndex = 0;
 let currentZoomScale = 1.0;
 let _userHasZoomed = false;
+let selectedBlockIndices = []; // Índices de bloques en modo multi-selección (Ctrl+Click)
 
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 3.0;
@@ -216,6 +217,7 @@ function normalizeBlock(block) {
     if (block.font_size_locked === undefined || block.font_size_locked === null) {
         block.font_size_locked = block.source === "native";
     }
+    if (block.text_align === undefined || block.text_align === null) block.text_align = "left";
     return block;
 }
 
@@ -467,6 +469,8 @@ function cycleViewEngine() {
     });
     // Ocultar barra flotante al ciclar la página para evitar solapamientos
     document.getElementById("floating-toolbar").hidden = true;
+    document.getElementById("multi-toolbar").hidden = true;
+    selectedBlockIndices = []; // Limpiar multi-selección al cambiar de página
     
     renderNativeCanvasEditor(globalPayload.pages[currentActivePageIndex]);
 }
@@ -541,9 +545,14 @@ function paintCanvasLayers(ctx, canvas, background, blocks) {
             ctx.beginPath();
             ctx.rect(x0, y0, width, height);
             ctx.clip();
-            
+
+            // Alineación de texto: izquierda, centro o derecha
+            const textAlign = block.text_align || "left";
+            ctx.textAlign = textAlign;
             const lineHeight = finalSize * TEXT_LINE_HEIGHT_MULTIPLIER;
-            const drawX = x0 + 4;
+            const drawX = textAlign === "right" ? x1 - 4 :
+                          textAlign === "center" ? (x0 + x1) / 2 :
+                          x0 + 4;
             let currentY = y0 + 4;
             const maxWidth = width - 8 > 0 ? width - 8 : 10;
             
@@ -592,6 +601,29 @@ function paintCanvasLayers(ctx, canvas, background, blocks) {
             ctx.fillText(singleLineText, x0 + 6, y0 - 6);
         }
     });
+
+    // ── Resaltado visual de multi-selección (segunda pasada, sobre todo lo demás) ──
+    selectedBlockIndices.forEach((selIdx, order) => {
+        if (selIdx >= blocks.length) return;
+        const [sx0, sy0, sx1, sy1] = blocks[selIdx].bbox;
+        const sw = sx1 - sx0, sh = sy1 - sy0;
+        // Overlay naranja semitransparente
+        ctx.fillStyle = 'rgba(251, 146, 60, 0.18)';
+        ctx.fillRect(sx0, sy0, sw, sh);
+        // Borde naranja punteado
+        ctx.strokeStyle = '#f97316';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([6, 3]);
+        ctx.strokeRect(sx0 - 1, sy0 - 1, sw + 2, sh + 2);
+        ctx.setLineDash([]);
+        // Badge numerado
+        ctx.fillStyle = '#f97316';
+        ctx.fillRect(sx0 + 2, sy0 + 2, 20, 20);
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 12px system-ui';
+        ctx.textBaseline = 'top';
+        ctx.fillText(`${order + 1}`, sx0 + 7, sy0 + 6);
+    });
 }
 
 function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
@@ -620,6 +652,37 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
     canvas.addEventListener("mousedown", (evt) => {
         const physical = getPhysicalCoords(evt);
         dragHasMoved = false;
+
+        // ── Ctrl+Click: modo multi-selección ──
+        if (evt.ctrlKey) {
+            const clickedIdx = blocks.findIndex(b => {
+                const [x0, y0, x1, y1] = b.bbox;
+                return physical.x >= x0 && physical.x <= x1 && physical.y >= y0 && physical.y <= y1;
+            });
+            if (clickedIdx !== -1) {
+                const pos = selectedBlockIndices.indexOf(clickedIdx);
+                if (pos === -1) {
+                    selectedBlockIndices.push(clickedIdx);
+                } else {
+                    selectedBlockIndices.splice(pos, 1);
+                }
+                paintCanvasLayers(ctx, canvas, bgImage, blocks);
+                if (selectedBlockIndices.length >= 2) {
+                    triggerMultiSelectToolbar(blocks, selectedBlockIndices, evt.clientX, evt.clientY);
+                } else {
+                    document.getElementById("multi-toolbar").hidden = true;
+                }
+            }
+            return;
+        }
+
+        // Clic normal: si hay multi-selección activa, limpiarla
+        if (selectedBlockIndices.length > 0) {
+            selectedBlockIndices = [];
+            document.getElementById("multi-toolbar").hidden = true;
+            paintCanvasLayers(ctx, canvas, bgImage, blocks);
+            return;
+        }
 
         // 1. Comprobar handles de resize (solo en bloques modificados)
         for (let i = 0; i < blocks.length; i++) {
@@ -806,6 +869,11 @@ function bindFloatingToolbarEvents() {
         
         currentTargetBlock.is_modified = true;
         
+        // Alineación
+        const alignKeys = ["left", "center", "right"];
+        const activeAlign = alignKeys.find(a => document.getElementById(`tb-align-${a}`)?.classList.contains("active")) || "left";
+        currentTargetBlock.text_align = activeAlign;
+        
         // DEBUG: Log para verificar que se guardó
         console.log("Bloque guardado:", {
             text: currentTargetBlock.text,
@@ -820,6 +888,47 @@ function bindFloatingToolbarEvents() {
         document.getElementById("floating-toolbar").hidden = true;
         cycleViewEngine();
     };
+
+    // ── Multi-toolbar bindings ──
+    const mtClose = document.getElementById("mt-close");
+    if (mtClose) mtClose.onclick = () => {
+        document.getElementById("multi-toolbar").hidden = true;
+        selectedBlockIndices = [];
+        cycleViewEngine();
+    };
+
+    const mtEqualize = document.getElementById("mt-equalize");
+    if (mtEqualize) mtEqualize.onclick = () => {
+        const alignKeys = ["left", "center", "right"];
+        const activeAlign = alignKeys.find(a => document.getElementById(`mt-align-${a}`)?.classList.contains("active")) || "left";
+        const styles = {
+            font_size:     parseFloat(document.getElementById("mt-size")?.value) || 16,
+            text_color:    document.getElementById("mt-color")?.value,
+            bg_color:      document.getElementById("mt-bg")?.value,
+            bg_transparent: !!document.getElementById("mt-bg-transparent")?.checked,
+            text_align:    activeAlign
+        };
+        equalizeSelectedFontSize(globalPayload.pages[currentActivePageIndex].blocks, [...selectedBlockIndices], styles);
+    };
+
+    const mtMerge = document.getElementById("mt-merge");
+    if (mtMerge) mtMerge.onclick = () => {
+        mergeSelectedBlocks(globalPayload.pages[currentActivePageIndex].blocks, [...selectedBlockIndices]);
+    };
+
+    // ── Alignment buttons — toolbar individual ──
+    ["left", "center", "right"].forEach(align => {
+        const tbBtn = document.getElementById(`tb-align-${align}`);
+        if (tbBtn) tbBtn.onclick = () => {
+            document.querySelectorAll("#floating-toolbar .align-btn").forEach(b => b.classList.remove("active"));
+            tbBtn.classList.add("active");
+        };
+        const mtBtn = document.getElementById(`mt-align-${align}`);
+        if (mtBtn) mtBtn.onclick = () => {
+            document.querySelectorAll("#multi-toolbar .align-btn").forEach(b => b.classList.remove("active"));
+            mtBtn.classList.add("active");
+        };
+    });
 }
 
 function triggerVisualEditModal(blocks, targetIndex, ctxScope, domX, domY) {
@@ -862,6 +971,13 @@ function triggerVisualEditModal(blocks, targetIndex, ctxScope, domX, domY) {
     
     const italicChk = document.getElementById("tb-italic");
     if (italicChk) italicChk.checked = block.is_italic;
+
+    // Actualizar botones de alineación
+    const blockAlign = block.text_align || "left";
+    ["left", "center", "right"].forEach(a => {
+        const btn = document.getElementById(`tb-align-${a}`);
+        if (btn) btn.classList.toggle("active", a === blockAlign);
+    });
     
     const fontSelect = document.getElementById("tb-font");
     if (fontSelect) {
@@ -874,6 +990,131 @@ function triggerVisualEditModal(blocks, targetIndex, ctxScope, domX, domY) {
         }
         fontSelect.value = block.font_family;
     }
+}
+
+/**
+ * Muestra el panel flotante de multi-selección con las acciones disponibles.
+ * Se activa automáticamente al seleccionar ≥2 bloques con Ctrl+Click.
+ * @param {Array} blocks - Array de bloques de la página actual.
+ * @param {number[]} selectedIndices - Índices seleccionados actualmente.
+ * @param {number} domX - Posición X del puntero (clientX).
+ * @param {number} domY - Posición Y del puntero (clientY).
+ */
+function triggerMultiSelectToolbar(blocks, selectedIndices, domX, domY) {
+    const toolbar = document.getElementById("multi-toolbar");
+    if (!toolbar) return;
+
+    const countEl = document.getElementById("mt-count");
+    if (countEl) countEl.textContent = `${selectedIndices.length} bloques seleccionados`;
+
+    // Calcular tamaño medio como sugerencia inicial
+    const sizes = selectedIndices.map(idx => blocks[idx]?.font_size || 16);
+    const avgSize = Math.round(sizes.reduce((a, b) => a + b, 0) / sizes.length) || 16;
+    const sizeInput = document.getElementById("mt-size");
+    if (sizeInput) sizeInput.value = avgSize;
+
+    // Precargar colores y alineación del primer bloque seleccionado
+    const firstBlock = blocks[selectedIndices[0]];
+    if (firstBlock) {
+        const colorIn = document.getElementById("mt-color");
+        if (colorIn) colorIn.value = firstBlock.text_color || "#000000";
+        const bgIn = document.getElementById("mt-bg");
+        if (bgIn) bgIn.value = firstBlock.bg_color || "#ffffff";
+        const tpIn = document.getElementById("mt-bg-transparent");
+        if (tpIn) tpIn.checked = !!firstBlock.bg_transparent;
+        const align = firstBlock.text_align || "left";
+        ["left", "center", "right"].forEach(a => {
+            const btn = document.getElementById(`mt-align-${a}`);
+            if (btn) btn.classList.toggle("active", a === align);
+        });
+    }
+
+    toolbar.style.transform = "none";
+    toolbar.style.left = `${Math.min(domX + window.scrollX + 15, window.innerWidth - 290)}px`;
+    toolbar.style.top = `${Math.min(domY + window.scrollY, window.innerHeight + window.scrollY - 200)}px`;
+    toolbar.hidden = false;
+    document.getElementById("floating-toolbar").hidden = true;
+}
+
+/**
+ * Aplica un conjunto de estilos a todos los bloques seleccionados.
+ * @param {Array} blocks - Array de bloques de la página actual.
+ * @param {number[]} selectedIndices - Índices de los bloques seleccionados.
+ * @param {Object} styles - {font_size, text_color, bg_color, bg_transparent, text_align}
+ */
+function equalizeSelectedFontSize(blocks, selectedIndices, styles) {
+    if (selectedIndices.length < 2) return;
+    saveToUndoStack();
+    selectedIndices.forEach(idx => {
+        if (idx >= blocks.length) return;
+        if (styles.font_size !== undefined && styles.font_size > 0) {
+            blocks[idx].font_size = styles.font_size;
+            blocks[idx].font_size_locked = true;
+        }
+        if (styles.text_color !== undefined)    blocks[idx].text_color    = styles.text_color;
+        if (styles.bg_color !== undefined)      blocks[idx].bg_color      = styles.bg_color;
+        if (styles.bg_transparent !== undefined) blocks[idx].bg_transparent = styles.bg_transparent;
+        if (styles.text_align !== undefined)    blocks[idx].text_align    = styles.text_align;
+        blocks[idx].is_modified = true;
+    });
+    selectedBlockIndices = [];
+    document.getElementById("multi-toolbar").hidden = true;
+    cycleViewEngine();
+}
+
+/**
+ * Fusiona los bloques seleccionados en un único bloque.
+ * El texto se concatena en orden vertical con saltos de línea.
+ * El bbox resultante es el envolvente de todos los bloques.
+ * @param {Array} blocks - Array de bloques de la página actual.
+ * @param {number[]} selectedIndices - Índices de los bloques seleccionados.
+ */
+function mergeSelectedBlocks(blocks, selectedIndices) {
+    if (selectedIndices.length < 2) return;
+    saveToUndoStack();
+
+    // Ordenar por posición vertical (y0) para concatenar de arriba a abajo
+    const sortedIndices = [...selectedIndices].sort((a, b) => blocks[a].bbox[1] - blocks[b].bbox[1]);
+    const selectedBlocks = sortedIndices.map(i => blocks[i]);
+
+    // Bbox mínimo contenedor
+    const x0 = Math.min(...selectedBlocks.map(b => b.bbox[0]));
+    const y0 = Math.min(...selectedBlocks.map(b => b.bbox[1]));
+    const x1 = Math.max(...selectedBlocks.map(b => b.bbox[2]));
+    const y1 = Math.max(...selectedBlocks.map(b => b.bbox[3]));
+
+    // Texto concatenado con saltos de línea, descartando vacíos
+    const mergedText = selectedBlocks
+        .map(b => (b.text || "").trim())
+        .filter(t => t.length > 0)
+        .join("\n");
+
+    // Heredar propiedades del bloque más alto verticalmente
+    const base = selectedBlocks[0];
+    const newBlock = {
+        bbox: [x0, y0, x1, y1],
+        text: mergedText,
+        text_color: base.text_color || "#000000",
+        bg_color: base.bg_color || "#ffffff",
+        bg_transparent: base.bg_transparent || false,
+        font_size: base.font_size || 16,
+        font_size_locked: true,
+        font_family: base.font_family || "system-ui",
+        is_bold: base.is_bold || false,
+        is_italic: base.is_italic || false,
+        text_align: base.text_align || "left",
+        is_modified: true,
+        source: "merged",
+        lock_position: false
+    };
+
+    // Eliminar bloques originales de mayor a menor índice para no desplazar
+    [...selectedIndices].sort((a, b) => b - a).forEach(idx => blocks.splice(idx, 1));
+    blocks.push(newBlock);
+
+    selectedBlockIndices = [];
+    document.getElementById("multi-toolbar").hidden = true;
+    cycleViewEngine();
 }
 
 export function mountExportControls(fullPayload) {
