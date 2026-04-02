@@ -12,21 +12,29 @@ import base64
 import zipfile
 import tempfile
 from pathlib import Path
+from typing import Any, cast
 
 import fitz
 from .markdown_exporter import build_markdown_export
 try:
     from pptx import Presentation
-    from pptx.util import Pt
+    from pptx.util import Pt, Emu
     from pptx.dml.color import RGBColor
-    from pptx.enum.text import PP_ALIGN
+    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
     PPTX_AVAILABLE = True
 except ImportError:
+    Presentation = None
+    Pt = None
+    Emu = None
+    RGBColor = None
+    PP_ALIGN = None
+    MSO_ANCHOR = None
     PPTX_AVAILABLE = False
 
 
 ALIGN_MAP_PDF = {"left": 0, "center": 1, "right": 2}
 ALIGN_MAP_PPTX = {"left": None, "center": None, "right": None}  # se rellena tras import
+EMU_PER_PT = 12700
 
 
 def _decode_image(b64_string: str) -> bytes:
@@ -41,7 +49,7 @@ def _hex_to_rgb(hex_code: str) -> tuple[int, int, int]:
     h = hex_code.lstrip('#')
     if len(h) != 6:
         return (255, 255, 255) # Fallback Blanco puro
-    return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
 
 
 def _to_pdf_font(font_name: str | None, is_bold: bool = False, is_italic: bool = False) -> str:
@@ -95,6 +103,128 @@ def _page_scale_to_pdf_points(page_data: dict) -> tuple[float, float]:
     return page_w / render_w, page_h / render_h
 
 
+def _page_scale_to_ppt_points(page_data: dict, width_px: float, height_px: float) -> tuple[float, float]:
+    """Convierte coordenadas del canvas (px) a puntos tipográficos para PPTX según metadatos de página."""
+    page_w_pt = float(page_data.get("page_width_pt") or width_px)
+    page_h_pt = float(page_data.get("page_height_pt") or height_px)
+    safe_w = max(1.0, float(width_px or 1.0))
+    safe_h = max(1.0, float(height_px or 1.0))
+    return page_w_pt / safe_w, page_h_pt / safe_h
+
+
+def _safe_line_spacing(raw_value: float | int | str | None) -> float:
+    try:
+        parsed = float(raw_value) if raw_value is not None else 1.15
+    except (TypeError, ValueError):
+        parsed = 1.15
+    return max(0.8, min(3.0, parsed))
+
+
+def _wrap_pdf_text_lines(text: str, fontname: str, fontsize: float, max_width: float) -> list[str]:
+    """Envuelve texto en líneas para replicar subrayado/line-height al exportar PDF."""
+    safe_text = str(text or "")
+    width_limit = max(1.0, float(max_width))
+
+    def text_width(sample: str) -> float:
+        try:
+            return float(fitz.get_text_length(sample, fontname=fontname, fontsize=fontsize))
+        except Exception:
+            return float(len(sample)) * fontsize * 0.5
+
+    lines: list[str] = []
+    for raw_line in safe_text.split("\n"):
+        words = raw_line.split(" ")
+        current = ""
+        for word in words:
+            candidate = f"{current} {word}".strip() if current else word
+            if current and text_width(candidate) > width_limit:
+                lines.append(current)
+                current = word
+            else:
+                current = candidate
+        lines.append(current)
+        if raw_line == "":
+            lines.append("")
+
+    if not lines:
+        lines.append("")
+    return lines
+
+
+def _draw_pdf_underlines(
+    page: fitz.Page,
+    rect: fitz.Rect,
+    text: str,
+    fontsize: float,
+    fontname: str,
+    color: tuple[float, float, float],
+    align: int,
+    line_spacing: float,
+    overlay: bool = False,
+) -> None:
+    lines = _wrap_pdf_text_lines(text, fontname, fontsize, rect.width)
+    line_h = fontsize * line_spacing
+
+    def text_width(sample: str) -> float:
+        try:
+            return float(fitz.get_text_length(sample, fontname=fontname, fontsize=fontsize))
+        except Exception:
+            return float(len(sample)) * fontsize * 0.5
+
+    for idx, line in enumerate(lines):
+        if not line:
+            continue
+        text_w = min(rect.width, text_width(line))
+        if align == 1:  # center
+            x0 = rect.x0 + (rect.width - text_w) / 2.0
+        elif align == 2:  # right
+            x0 = rect.x1 - text_w
+        else:  # left
+            x0 = rect.x0
+
+        baseline_y = rect.y0 + ((idx + 1) * line_h)
+        underline_y = baseline_y + max(0.6, fontsize * 0.08)
+        page.draw_line(
+            fitz.Point(x0, underline_y),
+            fitz.Point(x0 + text_w, underline_y),
+            color=color,
+            width=max(0.6, fontsize * 0.05),
+            overlay=overlay,
+        )
+
+
+def _insert_pdf_text_with_style(
+    page: fitz.Page,
+    rect: fitz.Rect,
+    text: str,
+    fontsize: float,
+    fontname: str,
+    color: tuple[float, float, float],
+    align: int,
+    line_spacing: float,
+    underline: bool,
+    overlay: bool = False,
+) -> None:
+    insert_kwargs = {
+        "fontsize": fontsize,
+        "fontname": fontname,
+        "color": color,
+        "align": align,
+    }
+
+    try:
+        page.insert_textbox(rect, text, lineheight=line_spacing, overlay=overlay, **insert_kwargs)
+    except TypeError:
+        # Compatibilidad con versiones de PyMuPDF sin argumento lineheight.
+        if overlay:
+            page.insert_textbox(rect, text, overlay=True, **insert_kwargs)
+        else:
+            page.insert_textbox(rect, text, **insert_kwargs)
+
+    if underline and text:
+        _draw_pdf_underlines(page, rect, text, fontsize, fontname, color, align, line_spacing, overlay=overlay)
+
+
 def _apply_hidden_pdf_signature(pdf_doc: fitz.Document) -> None:
     """Inyecta firma oculta en metadatos del PDF sin alterar el contenido visual."""
     metadata = pdf_doc.metadata or {}
@@ -119,19 +249,28 @@ def build_pdf_export(payload: dict) -> bytes:
             
         img_bytes = _decode_image(b64_img)
         
-        # Mapeamos dimensiones naturales desde los pixeles netos (Evita desviación de DPI de PyMuPDF)
+        # Mapeamos dimensiones naturales desde los pixeles netos
         from PIL import Image
         img_pil = Image.open(io.BytesIO(img_bytes))
         width_px = float(img_pil.width)
         height_px = float(img_pil.height)
         
-        new_page = pdf_out.new_page(width=width_px, height=height_px)
-        new_page.insert_image(fitz.Rect(0, 0, width_px, height_px), stream=img_bytes)
+        # Usar dimensiones reales en puntos PDF (no píxeles) para mantener el tamaño de página correcto
+        page_w_pt = float(page_data.get("page_width_pt") or width_px)
+        page_h_pt = float(page_data.get("page_height_pt") or height_px)
+        scale_x, scale_y = _page_scale_to_pdf_points(page_data)
+        
+        new_page = pdf_out.new_page(width=page_w_pt, height=page_h_pt)
+        new_page.insert_image(fitz.Rect(0, 0, page_w_pt, page_h_pt), stream=img_bytes)
         
         # Superposición de todos los bloques detectados como cajas editables
         for block in page_data.get("blocks", []):
             x0, y0, x1, y1 = block["bbox"]
-            box_rect = fitz.Rect(list(map(float, [x0, y0, x1, y1])))
+            # Convertir coordenadas del canvas (px) a puntos PDF
+            box_rect = fitz.Rect(
+                float(x0) * scale_x, float(y0) * scale_y,
+                float(x1) * scale_x, float(y1) * scale_y
+            )
             
             # Extraemos Variables Inyectadas por Usuario desde GUI
             bg_hex = block.get("bg_color", "#ffffff")
@@ -170,14 +309,26 @@ def build_pdf_export(payload: dict) -> bytes:
             texto = block.get("text", "")
             align_str = block.get("text_align", "left")
             pdf_align = ALIGN_MAP_PDF.get(align_str, 0)
+            line_spacing = _safe_line_spacing(block.get("line_spacing", 1.15))
+            is_underline = bool(block.get("is_underline", False))
+            # Convertir font_size de píxeles canvas a puntos PDF
+            current_font_size = max(6.0, float(fsize) * scale_y)
+            
+            # Los bloques transparentes siempre requieren overlay=True para que el texto sea visible
+            # encima de la imagen rasterizada (caso NanoBanana: limpieza sobre fondo claro).
+            use_overlay = block.get("bg_transparent", False)
 
-            new_page.insert_textbox(
-                expanded_rect, 
-                texto, 
-                fontsize=current_font_size,
-                fontname=pdf_font, 
-                color=t_color_norm,
-                align=pdf_align
+            _insert_pdf_text_with_style(
+                new_page,
+                expanded_rect,
+                texto,
+                current_font_size,
+                pdf_font,
+                t_color_norm,
+                pdf_align,
+                line_spacing,
+                is_underline,
+                overlay=use_overlay,
             )
 
     _apply_hidden_pdf_signature(pdf_out)
@@ -282,16 +433,21 @@ def build_pdf_export_from_original(payload: dict, source_pdf_path: Path) -> byte
             texto = block.get("text", "")
             align_str = block.get("text_align", "left")
             pdf_align = ALIGN_MAP_PDF.get(align_str, 0)
+            line_spacing = _safe_line_spacing(block.get("line_spacing", 1.15))
+            is_underline = bool(block.get("is_underline", False))
             
             # Dibujado definitivo en la página real con el tamaño ideal calculado del usuario
-            page.insert_textbox(
+            _insert_pdf_text_with_style(
+                page,
                 final_rect,
                 texto,
-                fontsize=current_font_size,
-                fontname=font_name,
-                color=text_color,
+                current_font_size,
+                font_name,
+                text_color,
+                pdf_align,
+                line_spacing,
+                is_underline,
                 overlay=True,
-                align=pdf_align,
             )
 
     _apply_hidden_pdf_signature(pdf_out)
@@ -309,7 +465,14 @@ def build_pptx_export(payload: dict) -> bytes:
     """
     if not PPTX_AVAILABLE:
         raise RuntimeError("La librería python-pptx no se encuentra instalada.")
-        
+
+    assert Presentation is not None
+    assert Pt is not None
+    assert Emu is not None
+    assert RGBColor is not None
+    assert PP_ALIGN is not None
+    assert MSO_ANCHOR is not None
+
     prs = Presentation()
     
     # 914400 EMUs dictaminan 1 pulgada geométrica según la Open XML Specification
@@ -332,25 +495,31 @@ def build_pptx_export(payload: dict) -> bytes:
         height_px = float(img_pil.height)
         img_stream.seek(0)
             
+        page_w_pt = float(page_data.get("page_width_pt") or width_px)
+        page_h_pt = float(page_data.get("page_height_pt") or height_px)
         if page_index == 0:
-            # La imagen fue rasterizada a 100 DPI: usar ese factor para escalar a EMU
-            prs.slide_width = int((width_px / 100.0) * 914400)
-            prs.slide_height = int((height_px / 100.0) * 914400)
+            # Usar puntos reales del PDF evita depender del DPI de rasterizado.
+            prs.slide_width = Emu(int(max(1.0, page_w_pt) * EMU_PER_PT))
+            prs.slide_height = Emu(int(max(1.0, page_h_pt) * EMU_PER_PT))
+
+        slide_width_emu = int(cast(Any, prs.slide_width))
+        slide_height_emu = int(cast(Any, prs.slide_height))
         
         # Tapizado del Background completo Slide -> Slide
-        slide.shapes.add_picture(img_stream, 0, 0, width=prs.slide_width, height=prs.slide_height)
+        slide.shapes.add_picture(img_stream, Emu(0), Emu(0), width=Emu(slide_width_emu), height=Emu(slide_height_emu))
         
         # Ecuación de Escalado y Mapeo Posicional del texto
-        ratio_x = prs.slide_width / width_px
-        ratio_y = prs.slide_height / height_px
+        ratio_x = slide_width_emu / max(1.0, width_px)
+        ratio_y = slide_height_emu / max(1.0, height_px)
+        _, px_to_pt_y = _page_scale_to_ppt_points(page_data, width_px, height_px)
         
         for block in page_data.get("blocks", []):
             x0, y0, x1, y1 = block["bbox"]
             
-            shape_left = int(x0 * ratio_x)
-            shape_top = int(y0 * ratio_y)
-            shape_width = int((x1 - x0) * ratio_x)
-            shape_height = int((y1 - y0) * ratio_y)
+            shape_left = Emu(int(x0 * ratio_x))
+            shape_top = Emu(int(y0 * ratio_y))
+            shape_width = Emu(int((x1 - x0) * ratio_x))
+            shape_height = Emu(int((y1 - y0) * ratio_y))
             
             # Recuperar de JSON
             bg_hex = block.get("bg_color", "#ffffff")
@@ -387,8 +556,9 @@ def build_pptx_export(payload: dict) -> bytes:
             text_frame.margin_bottom = Inches(0.02)  # Margen inferior mínimo
             text_frame.margin_left = Inches(0.03)    # Margen izquierdo mínimo
             text_frame.margin_right = Inches(0.03)   # Margen derecho mínimo
-            text_frame.word_wrap = False
-            text_frame.vertical_anchor = 1  # 1 = Centrado verticalmente
+            # Mantener el ajuste al ancho del bloque como en el editor canvas.
+            text_frame.word_wrap = True
+            text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
             
             p = text_frame.paragraphs[0]
             p.text = block.get("text", "")
@@ -402,24 +572,25 @@ def build_pptx_export(payload: dict) -> bytes:
             else:
                 p.alignment = PP_ALIGN.LEFT
             
-            # Factor de conversión Pixel a Puntos PPTX
-            # Nota: En PPTX el factor 0.72 es crítico para que la fuente no desborde el layout
-            real_pt = max(8, fsize * 0.72)
+            # Conversión tipográfica exacta según proporción real canvas->página.
+            # Se usa el eje Y para preservar altura visual de línea.
+            real_pt = max(1.0, float(fsize) * px_to_pt_y)
             p.font.size = Pt(real_pt)
             p.font.name = font_fam
             p.font.color.rgb = RGBColor(*_hex_to_rgb(txt_hex))
             p.font.bold = bool(block.get("is_bold", False))
             p.font.italic = bool(block.get("is_italic", False))
+            p.font.underline = bool(block.get("is_underline", False))
             
             # Line spacing para mejor espaciado
-            p.line_spacing = 1.1
+            p.line_spacing = _safe_line_spacing(block.get("line_spacing", 1.15))
 
     buffer = io.BytesIO()
     prs.save(buffer)
     return buffer.getvalue()
 
 
-def generate_export_zip(payload_dict: dict, source_pdf_path: Path | None = None) -> tuple[Path, str]:
+def generate_export_zip(payload_dict: dict, source_pdf_path: Path | None = None) -> tuple[Path, Path]:
     """
     Rutea la producción de ambos documentos solicitados al Core
     y los envuelve en un Zip FileResponse para FastAPI.

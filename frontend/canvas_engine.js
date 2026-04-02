@@ -20,6 +20,7 @@ const ZOOM_STEP = 0.1;
 const TEXT_BOX_PADDING = 8;
 const TEXT_LINE_HEIGHT_MULTIPLIER = 1.15;
 const EXPORT_TARGETS_STORAGE_KEY = "dbv_export_targets_v1";
+const INLINE_EDIT_BG_MODE_STORAGE_KEY = "dbv_inline_edit_bg_mode_v1";
 const _measurementCanvas = document.createElement("canvas");
 const _measurementCtx = _measurementCanvas.getContext("2d");
 
@@ -107,6 +108,49 @@ function performRedo() {
     // Restaurar el estado siguiente
     const nextSnapshot = redoStack.pop();
     restoreSnapshot(nextSnapshot);
+}
+
+/**
+ * Elimina bloques seleccionados (multi-selección) o el bloque activo del toolbar.
+ * @returns {boolean} true si se eliminó al menos un bloque.
+ */
+function deleteActiveBlocks() {
+    if (!globalPayload?.pages?.length) return false;
+
+    const page = globalPayload.pages[currentActivePageIndex];
+    if (!page?.blocks?.length) return false;
+
+    const blocks = page.blocks;
+    let targets = [];
+
+    if (selectedBlockIndices.length > 0) {
+        targets = [...new Set(selectedBlockIndices)]
+            .filter(idx => idx >= 0 && idx < blocks.length)
+            .sort((a, b) => b - a);
+    } else if (currentTargetBlock) {
+        const singleIndex = blocks.indexOf(currentTargetBlock);
+        if (singleIndex !== -1) {
+            targets = [singleIndex];
+        }
+    }
+
+    if (!targets.length) return false;
+
+    saveToUndoStack();
+    targets.forEach(idx => blocks.splice(idx, 1));
+
+    selectedBlockIndices = [];
+    currentTargetBlock = null;
+    currentTargetInitialFontSize = null;
+    currentTargetInitialFontLock = false;
+
+    const floatingToolbar = document.getElementById("floating-toolbar");
+    if (floatingToolbar) floatingToolbar.hidden = true;
+    const multiToolbar = document.getElementById("multi-toolbar");
+    if (multiToolbar) multiToolbar.hidden = true;
+
+    cycleViewEngine();
+    return true;
 }
 
 /**
@@ -213,7 +257,9 @@ function normalizeBlock(block) {
     if (block.font_family === undefined || block.font_family === null) block.font_family = "system-ui";
     if (block.is_bold === undefined || block.is_bold === null) block.is_bold = false;
     if (block.is_italic === undefined || block.is_italic === null) block.is_italic = false;
+    if (block.is_underline === undefined || block.is_underline === null) block.is_underline = false;
     if (block.font_size === undefined || block.font_size === null) block.font_size = 16;
+    if (block.line_spacing === undefined || block.line_spacing === null) block.line_spacing = TEXT_LINE_HEIGHT_MULTIPLIER;
     if (block.text === undefined || block.text === null) block.text = "";
     if (block.font_size_locked === undefined || block.font_size_locked === null) {
         block.font_size_locked = block.source === "native";
@@ -296,11 +342,448 @@ function drawResizeHandles(ctx, bbox) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+function _isResizeInteractiveBlock(block) {
+    if (!block) return false;
+    return !!block.is_modified || block === currentTargetBlock || block === inlineEditorSession?.block;
+}
+
 // Variables reactivas de estado (Toolbar UI)
 let currentTargetBlock = null;
 let currentCanvasCtx = null;
 let currentTargetInitialFontSize = null;
 let currentTargetInitialFontLock = false;
+let selectionMarquee = null;
+let inlineEditorSession = null;
+let inlineEditOpaqueMode = true;
+
+function _inlineToolbarElement() {
+    const toolbar = document.getElementById("inline-toolbar");
+    const wrapper = document.getElementById("canvas-wrapper");
+    if (toolbar && wrapper && toolbar.parentElement !== wrapper) {
+        wrapper.appendChild(toolbar);
+    }
+    return toolbar;
+}
+
+function _isLightHexColor(hex) {
+    const safe = `${hex || ""}`.trim();
+    const normalized = safe.startsWith("#") ? safe.slice(1) : safe;
+    if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return false;
+    const r = parseInt(normalized.slice(0, 2), 16);
+    const g = parseInt(normalized.slice(2, 4), 16);
+    const b = parseInt(normalized.slice(4, 6), 16);
+    // Luminancia perceptual aproximada
+    const luma = (0.299 * r) + (0.587 * g) + (0.114 * b);
+    return luma >= 170;
+}
+
+function _updateInlineEditBgToggleUI() {
+    const btn = document.getElementById("ib-edit-bg-mode");
+    if (!btn) return;
+    btn.classList.toggle("active", inlineEditOpaqueMode);
+    btn.title = inlineEditOpaqueMode ? "Vista edición opaca" : "Vista edición transparente";
+}
+
+function _rectsIntersect(a, b) {
+    return !(a.x1 < b.x0 || a.x0 > b.x1 || a.y1 < b.y0 || a.y0 > b.y1);
+}
+
+function _makeToolbarDraggable(toolbarId) {
+    const toolbar = document.getElementById(toolbarId);
+    if (!toolbar || toolbar.dataset.dragEnabled === "true") return;
+
+    const handle = toolbar.querySelector("h4");
+    if (!handle) return;
+
+    let dragging = false;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    const onMouseMove = (evt) => {
+        if (!dragging) return;
+        const maxLeft = window.scrollX + window.innerWidth - toolbar.offsetWidth - 8;
+        const maxTop = window.scrollY + window.innerHeight - toolbar.offsetHeight - 8;
+        const nextLeft = Math.max(window.scrollX + 8, Math.min(maxLeft, evt.clientX + window.scrollX - offsetX));
+        const nextTop = Math.max(window.scrollY + 8, Math.min(maxTop, evt.clientY + window.scrollY - offsetY));
+        toolbar.style.transform = "none";
+        toolbar.style.left = `${nextLeft}px`;
+        toolbar.style.top = `${nextTop}px`;
+    };
+
+    const stopDragging = () => {
+        dragging = false;
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", stopDragging);
+    };
+
+    handle.addEventListener("mousedown", (evt) => {
+        const interactive = evt.target.closest("button, input, textarea, select, label");
+        if (interactive) return;
+        dragging = true;
+        const rect = toolbar.getBoundingClientRect();
+        offsetX = evt.clientX - rect.left;
+        offsetY = evt.clientY - rect.top;
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", stopDragging);
+    });
+
+    toolbar.dataset.dragEnabled = "true";
+}
+
+function _ensureInlineEditorElement() {
+    const wrapper = document.getElementById("canvas-wrapper");
+    if (!wrapper) return null;
+
+    let editor = document.getElementById("inline-block-editor");
+    if (!editor) {
+        editor = document.createElement("div");
+        editor.id = "inline-block-editor";
+        editor.className = "inline-block-editor";
+        editor.contentEditable = "true";
+        editor.hidden = true;
+        wrapper.appendChild(editor);
+    }
+    return editor;
+}
+
+function _blockCssRect(canvas, block) {
+    const wrapper = document.getElementById("canvas-wrapper");
+    if (!wrapper) return null;
+    const canvasRect = canvas.getBoundingClientRect();
+    const wrapperRect = wrapper.getBoundingClientRect();
+    const scaleX = canvasRect.width / Math.max(1, canvas.width);
+    const scaleY = canvasRect.height / Math.max(1, canvas.height);
+    const [x0, y0, x1, y1] = block.bbox;
+
+    return {
+        left: (canvasRect.left - wrapperRect.left) + (x0 * scaleX),
+        top: (canvasRect.top - wrapperRect.top) + (y0 * scaleY),
+        width: Math.max(20, (x1 - x0) * scaleX),
+        height: Math.max(20, (y1 - y0) * scaleY),
+        scaleY
+    };
+}
+
+function _positionInlineEditor() {
+    if (!inlineEditorSession) return;
+    const { editor, canvas, block } = inlineEditorSession;
+    const rect = _blockCssRect(canvas, block);
+    if (!rect) return;
+
+    editor.style.left = `${rect.left}px`;
+    editor.style.top = `${rect.top}px`;
+    editor.style.width = `${rect.width}px`;
+    editor.style.height = `${rect.height}px`;
+    editor.style.fontSize = `${Math.max(8, (block.font_size || 16) * rect.scaleY)}px`;
+
+    const toolbar = _inlineToolbarElement();
+    if (toolbar && !toolbar.hidden) {
+        const wrapper = document.getElementById("canvas-wrapper");
+        if (wrapper) {
+            const desiredTop = rect.top - toolbar.offsetHeight - 8;
+            const topFallback = rect.top + rect.height + 8;
+            const maxLeft = wrapper.clientWidth - toolbar.offsetWidth - 8;
+            const left = Math.max(8, Math.min(rect.left, maxLeft));
+            const top = desiredTop >= 8 ? desiredTop : topFallback;
+            toolbar.style.left = `${left}px`;
+            toolbar.style.top = `${top}px`;
+        }
+    }
+}
+
+function _applyInlineEditorVisuals() {
+    if (!inlineEditorSession) return;
+    const { editor, block } = inlineEditorSession;
+    editor.style.fontFamily = block.font_family || "system-ui";
+    editor.style.fontWeight = block.is_bold ? "700" : "400";
+    editor.style.fontStyle = block.is_italic ? "italic" : "normal";
+    editor.style.textDecoration = block.is_underline ? "underline" : "none";
+    editor.style.lineHeight = `${Math.max(0.8, Math.min(3.0, Number(block.line_spacing) || TEXT_LINE_HEIGHT_MULTIPLIER))}`;
+    editor.style.color = block.text_color || "#000000";
+    editor.style.textAlign = block.text_align || "left";
+    // UX: durante edición usamos fondo opaco temporal para máxima legibilidad,
+    // especialmente en bloques transparentes tras limpieza con IA.
+    if (block.bg_transparent) {
+        const textIsLight = _isLightHexColor(block.text_color || "#000000");
+        if (inlineEditOpaqueMode) {
+            editor.style.background = textIsLight ? "#0f172a" : "#ffffff";
+        } else {
+            editor.style.background = textIsLight ? "rgba(15, 23, 42, 0.45)" : "rgba(255, 255, 255, 0.45)";
+        }
+    } else {
+        editor.style.background = block.bg_color || "#ffffff";
+    }
+    _positionInlineEditor();
+}
+
+function _syncInlineToolbarFromBlock(block) {
+    const font = document.getElementById("ib-font");
+    const size = document.getElementById("ib-size");
+    const lineSpacing = document.getElementById("ib-line-spacing");
+    const width = document.getElementById("ib-width");
+    const height = document.getElementById("ib-height");
+    const bold = document.getElementById("ib-bold");
+    const italic = document.getElementById("ib-italic");
+    const underline = document.getElementById("ib-underline");
+    const color = document.getElementById("ib-color");
+    const bg = document.getElementById("ib-bg");
+    const transp = document.getElementById("ib-bg-transparent");
+
+    if (font) {
+        const hasOption = Array.from(font.options).some(opt => opt.value === block.font_family);
+        if (!hasOption && block.font_family) {
+            const custom = document.createElement("option");
+            custom.value = block.font_family;
+            custom.textContent = block.font_family;
+            font.appendChild(custom);
+        }
+        font.value = block.font_family || "system-ui";
+    }
+    if (size) size.value = `${block.font_size || 16}`;
+    if (lineSpacing) lineSpacing.value = `${Math.max(0.8, Math.min(3.0, Number(block.line_spacing) || TEXT_LINE_HEIGHT_MULTIPLIER))}`;
+    if (width) width.value = `${Math.round(Math.max(20, block.bbox[2] - block.bbox[0]))}`;
+    if (height) height.value = `${Math.round(Math.max(20, block.bbox[3] - block.bbox[1]))}`;
+    if (bold) bold.classList.toggle("active", !!block.is_bold);
+    if (italic) italic.classList.toggle("active", !!block.is_italic);
+    if (underline) underline.classList.toggle("active", !!block.is_underline);
+    if (color) color.value = block.text_color || "#000000";
+    if (bg) bg.value = block.bg_color || "#ffffff";
+    if (transp) transp.checked = !!block.bg_transparent;
+
+    ["left", "center", "right"].forEach(align => {
+        const btn = document.getElementById(`ib-align-${align}`);
+        if (btn) btn.classList.toggle("active", (block.text_align || "left") === align);
+    });
+}
+
+function _bindInlineToolbarEvents() {
+    const toolbar = _inlineToolbarElement();
+    if (!toolbar || toolbar.dataset.bound === "true") return;
+
+    try {
+        const rawMode = localStorage.getItem(INLINE_EDIT_BG_MODE_STORAGE_KEY);
+        if (rawMode === "opaque") inlineEditOpaqueMode = true;
+        if (rawMode === "transparent") inlineEditOpaqueMode = false;
+    } catch {
+        // ignore storage failures
+    }
+    _updateInlineEditBgToggleUI();
+
+    const applyCurrentControls = () => {
+        if (!inlineEditorSession) return;
+        const block = inlineEditorSession.block;
+        const font = document.getElementById("ib-font");
+        const size = document.getElementById("ib-size");
+        const lineSpacing = document.getElementById("ib-line-spacing");
+        const width = document.getElementById("ib-width");
+        const height = document.getElementById("ib-height");
+        const color = document.getElementById("ib-color");
+        const bg = document.getElementById("ib-bg");
+        const transp = document.getElementById("ib-bg-transparent");
+
+        if (font) block.font_family = font.value;
+        if (size) {
+            const parsed = parseFloat(size.value);
+            if (!Number.isNaN(parsed) && parsed > 0) {
+                block.font_size = parsed;
+                block.font_size_locked = true;
+            }
+        }
+        if (lineSpacing) {
+            const parsedLS = parseFloat(lineSpacing.value);
+            if (!Number.isNaN(parsedLS)) {
+                block.line_spacing = Math.max(0.8, Math.min(3.0, parsedLS));
+            }
+        }
+        if (width || height) {
+            const [x0, y0, x1, y1] = block.bbox;
+            const currentW = Math.max(20, x1 - x0);
+            const currentH = Math.max(20, y1 - y0);
+            const parsedW = width ? parseFloat(width.value) : currentW;
+            const parsedH = height ? parseFloat(height.value) : currentH;
+            const nextW = (!Number.isNaN(parsedW) && parsedW >= 20) ? parsedW : currentW;
+            const nextH = (!Number.isNaN(parsedH) && parsedH >= 20) ? parsedH : currentH;
+            block.bbox = [x0, y0, x0 + nextW, y0 + nextH];
+        }
+        if (color) block.text_color = color.value;
+        if (bg) block.bg_color = bg.value;
+        if (transp) block.bg_transparent = !!transp.checked;
+        block.is_modified = true;
+        _applyInlineEditorVisuals();
+    };
+
+    ["ib-font", "ib-size", "ib-line-spacing", "ib-width", "ib-height", "ib-color", "ib-bg", "ib-bg-transparent"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            const eventName = (id === "ib-size" || id === "ib-line-spacing" || id === "ib-width" || id === "ib-height") ? "input" : "change";
+            el.addEventListener(eventName, applyCurrentControls);
+        }
+    });
+
+    const toggleProp = (id, prop) => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.addEventListener("click", () => {
+            if (!inlineEditorSession) return;
+            inlineEditorSession.block[prop] = !inlineEditorSession.block[prop];
+            inlineEditorSession.block.is_modified = true;
+            btn.classList.toggle("active", !!inlineEditorSession.block[prop]);
+            _applyInlineEditorVisuals();
+        });
+    };
+
+    toggleProp("ib-bold", "is_bold");
+    toggleProp("ib-italic", "is_italic");
+    toggleProp("ib-underline", "is_underline");
+
+    ["left", "center", "right"].forEach(align => {
+        const btn = document.getElementById(`ib-align-${align}`);
+        if (!btn) return;
+        btn.addEventListener("click", () => {
+            if (!inlineEditorSession) return;
+            inlineEditorSession.block.text_align = align;
+            inlineEditorSession.block.is_modified = true;
+            ["left", "center", "right"].forEach(a => {
+                const other = document.getElementById(`ib-align-${a}`);
+                if (other) other.classList.toggle("active", a === align);
+            });
+            _applyInlineEditorVisuals();
+        });
+    });
+
+    const done = document.getElementById("ib-done");
+    if (done) {
+        done.addEventListener("click", () => {
+            _closeInlineEditor(true);
+        });
+    }
+
+    const editBgModeBtn = document.getElementById("ib-edit-bg-mode");
+    if (editBgModeBtn) {
+        editBgModeBtn.addEventListener("click", () => {
+            inlineEditOpaqueMode = !inlineEditOpaqueMode;
+            try {
+                localStorage.setItem(INLINE_EDIT_BG_MODE_STORAGE_KEY, inlineEditOpaqueMode ? "opaque" : "transparent");
+            } catch {
+                // ignore storage failures
+            }
+            _updateInlineEditBgToggleUI();
+            _applyInlineEditorVisuals();
+        });
+    }
+
+    toolbar.dataset.bound = "true";
+}
+
+function _closeInlineEditor(saveChanges) {
+    if (!inlineEditorSession) return;
+
+    const { editor, block, originalText, ctxScope } = inlineEditorSession;
+    const nextText = (editor.innerText || "").replace(/\r/g, "");
+
+    if (saveChanges && nextText !== originalText) {
+        saveToUndoStack();
+        block.text = nextText;
+        block.is_modified = true;
+    }
+
+    editor.onblur = null;
+    editor.onkeydown = null;
+    editor.hidden = true;
+    editor.textContent = "";
+
+    const toolbar = _inlineToolbarElement();
+    if (toolbar) {
+        toolbar.hidden = true;
+    }
+
+    inlineEditorSession = null;
+
+    paintCanvasLayers(ctxScope.ctx, ctxScope.canvas, ctxScope.bgImage, ctxScope.blocks);
+}
+
+function startInlineBlockEdit(blocks, targetIndex, ctxScope) {
+    const block = blocks[targetIndex];
+    if (!block) return;
+    currentTargetBlock = block;
+
+    const editor = _ensureInlineEditorElement();
+    if (!editor) return;
+
+    if (inlineEditorSession) {
+        _closeInlineEditor(true);
+    }
+
+    document.getElementById("floating-toolbar").hidden = true;
+    document.getElementById("multi-toolbar").hidden = true;
+
+    _bindInlineToolbarEvents();
+    const toolbar = _inlineToolbarElement();
+    if (toolbar) {
+        toolbar.hidden = false;
+    }
+
+    editor.hidden = false;
+    editor.textContent = block.text || "";
+
+    inlineEditorSession = {
+        editor,
+        block,
+        originalText: block.text || "",
+        canvas: ctxScope.canvas,
+        ctxScope: {
+            ctx: ctxScope.ctx,
+            canvas: ctxScope.canvas,
+            bgImage: ctxScope.bgImage,
+            blocks
+        }
+    };
+
+    _syncInlineToolbarFromBlock(block);
+    const fontSelect = document.getElementById("ib-font");
+    if (fontSelect && fontSelect.dataset.previewReady !== "true") {
+        Array.from(fontSelect.options).forEach(opt => {
+            opt.style.fontFamily = opt.value;
+        });
+        fontSelect.dataset.previewReady = "true";
+    }
+    _applyInlineEditorVisuals();
+    _positionInlineEditor();
+
+    editor.onkeydown = (evt) => {
+        if (evt.key === "Escape") {
+            evt.preventDefault();
+            _closeInlineEditor(false);
+            return;
+        }
+        if ((evt.ctrlKey || evt.metaKey) && evt.key === "Enter") {
+            evt.preventDefault();
+            _closeInlineEditor(true);
+        }
+    };
+
+    editor.onblur = () => {
+        window.setTimeout(() => {
+            if (!inlineEditorSession) return;
+            const active = document.activeElement;
+            const toolbar = _inlineToolbarElement();
+            if (toolbar && active && toolbar.contains(active)) {
+                return;
+            }
+            _closeInlineEditor(true);
+        }, 0);
+    };
+
+    editor.focus();
+    const selection = window.getSelection();
+    if (selection) {
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+    }
+}
 
 function _clampZoom(value) {
     return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, value));
@@ -318,6 +801,8 @@ function applyZoomToCanvas(canvas) {
     indicators.forEach(ind => { 
         if (ind) ind.textContent = `${Math.round(zoom * 100)}%`; 
     });
+
+    _positionInlineEditor();
 }
 
 function bindCanvasZoomControls() {
@@ -491,6 +976,8 @@ export function initPagination(fullData) {
 }
 
 function cycleViewEngine() {
+    _closeInlineEditor(true);
+
     const indicators = [document.getElementById("page-indicator"), document.getElementById("page-indicator-top")];
     indicators.forEach(indicator => {
         if (indicator) {
@@ -501,6 +988,7 @@ function cycleViewEngine() {
     document.getElementById("floating-toolbar").hidden = true;
     document.getElementById("multi-toolbar").hidden = true;
     selectedBlockIndices = []; // Limpiar multi-selección al cambiar de página
+    selectionMarquee = null;
     
     renderNativeCanvasEditor(globalPayload.pages[currentActivePageIndex]);
 }
@@ -549,6 +1037,7 @@ function paintCanvasLayers(ctx, canvas, background, blocks) {
     
     blocks.forEach(block => {
         normalizeBlock(block);
+        const isInlineEditingBlock = inlineEditorSession?.block === block;
         const [x0, y0, x1, y1] = block.bbox;
         const width = x1 - x0;
         const height = y1 - y0;
@@ -560,51 +1049,80 @@ function paintCanvasLayers(ctx, canvas, background, blocks) {
                 ctx.fillRect(x0, y0, width, height);
             }
             
-            // Texto mutado de custom formatting
-            ctx.fillStyle = block.text_color || "#000000"; 
-            const calcDynamicSize = calculateOptimalFontSize(block.text, width, height); 
-            const finalSize = resolveEditableFontSize(block) || block.font_size || calcDynamicSize;
-            const finalFont = block.font_family || "system-ui";
-            
-            // Respetar negrita e itálica del bloque (no forzar bold siempre)
-            ctx.font = buildFontDeclaration(finalSize, finalFont, block.is_bold, block.is_italic);
-            ctx.textBaseline = "top";
-            
-            // Clipear al bbox para que el texto nunca desborde visualmente sobre otros bloques
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(x0, y0, width, height);
-            ctx.clip();
+            // Mientras editamos inline ocultamos el texto subyacente del bloque
+            // para evitar efecto de doble texto bajo el contenteditable.
+            if (!isInlineEditingBlock) {
+                // Texto mutado de custom formatting
+                ctx.fillStyle = block.text_color || "#000000"; 
+                const calcDynamicSize = calculateOptimalFontSize(block.text, width, height); 
+                const finalSize = resolveEditableFontSize(block) || block.font_size || calcDynamicSize;
+                const finalFont = block.font_family || "system-ui";
+                
+                // Respetar negrita e itálica del bloque (no forzar bold siempre)
+                ctx.font = buildFontDeclaration(finalSize, finalFont, block.is_bold, block.is_italic);
+                ctx.textBaseline = "top";
+                
+                // Clipear al bbox para que el texto nunca desborde visualmente sobre otros bloques
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(x0, y0, width, height);
+                ctx.clip();
 
-            // Alineación de texto: izquierda, centro o derecha
-            const textAlign = block.text_align || "left";
-            ctx.textAlign = textAlign;
-            const lineHeight = finalSize * TEXT_LINE_HEIGHT_MULTIPLIER;
-            const drawX = textAlign === "right" ? x1 - 4 :
-                          textAlign === "center" ? (x0 + x1) / 2 :
-                          x0 + 4;
-            let currentY = y0 + 4;
-            const maxWidth = width - 8 > 0 ? width - 8 : 10;
-            
-            (block.text || "").split('\n').forEach(rawLine => {
-                const words = rawLine.split(' ');
-                let line = '';
-                for (let n = 0; n < words.length; n++) {
-                    const testLine = line + words[n] + ' ';
-                    const metrics = ctx.measureText(testLine);
-                    if (metrics.width > maxWidth && n > 0) {
-                        ctx.fillText(line, drawX, currentY);
-                        line = words[n] + ' ';
-                        currentY += lineHeight;
-                    } else {
-                        line = testLine;
+                // Alineación de texto: izquierda, centro o derecha
+                const textAlign = block.text_align || "left";
+                ctx.textAlign = textAlign;
+                const lineSpacing = Math.max(0.8, Math.min(3.0, Number(block.line_spacing) || TEXT_LINE_HEIGHT_MULTIPLIER));
+                const lineHeight = finalSize * lineSpacing;
+                const drawX = textAlign === "right" ? x1 - 4 :
+                              textAlign === "center" ? (x0 + x1) / 2 :
+                              x0 + 4;
+                let currentY = y0 + 4;
+                const maxWidth = width - 8 > 0 ? width - 8 : 10;
+                
+                (block.text || "").split('\n').forEach(rawLine => {
+                    const words = rawLine.split(' ');
+                    let line = '';
+                    for (let n = 0; n < words.length; n++) {
+                        const testLine = line + words[n] + ' ';
+                        const metrics = ctx.measureText(testLine);
+                        if (metrics.width > maxWidth && n > 0) {
+                            const lineText = line.trimEnd();
+                            ctx.fillText(lineText, drawX, currentY);
+                            if (block.is_underline) {
+                                const width = ctx.measureText(lineText).width;
+                                const baseY = currentY + lineHeight - 2;
+                                const startX = textAlign === "right" ? drawX - width : (textAlign === "center" ? drawX - (width / 2) : drawX);
+                                ctx.beginPath();
+                                ctx.moveTo(startX, baseY);
+                                ctx.lineTo(startX + width, baseY);
+                                ctx.lineWidth = Math.max(1, finalSize * 0.06);
+                                ctx.strokeStyle = block.text_color || "#000000";
+                                ctx.stroke();
+                            }
+                            line = words[n] + ' ';
+                            currentY += lineHeight;
+                        } else {
+                            line = testLine;
+                        }
                     }
-                }
-                ctx.fillText(line, drawX, currentY);
-                currentY += lineHeight;
-            });
-            
-            ctx.restore();
+                    const finalLine = line.trimEnd();
+                    ctx.fillText(finalLine, drawX, currentY);
+                    if (block.is_underline) {
+                        const width = ctx.measureText(finalLine).width;
+                        const baseY = currentY + lineHeight - 2;
+                        const startX = textAlign === "right" ? drawX - width : (textAlign === "center" ? drawX - (width / 2) : drawX);
+                        ctx.beginPath();
+                        ctx.moveTo(startX, baseY);
+                        ctx.lineTo(startX + width, baseY);
+                        ctx.lineWidth = Math.max(1, finalSize * 0.06);
+                        ctx.strokeStyle = block.text_color || "#000000";
+                        ctx.stroke();
+                    }
+                    currentY += lineHeight;
+                });
+                
+                ctx.restore();
+            }
             
             // Borde verde OK + handles de redimensión
             ctx.strokeStyle = "rgba(40, 167, 69, 0.9)";
@@ -620,15 +1138,25 @@ function paintCanvasLayers(ctx, canvas, background, blocks) {
             ctx.lineWidth = 2;
             ctx.strokeRect(x0, y0, width, height);
             
-            ctx.font = "bold 14px system-ui";
-            ctx.textBaseline = "bottom";
-            const singleLineText = (block.text || "").replace(/\n/g, ' ');
-            const measurements = ctx.measureText(singleLineText);
-            
-            ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
-            ctx.fillRect(x0, y0 - 24, Math.min(width, measurements.width + 12), 24);
-            ctx.fillStyle = "#1a202c";
-            ctx.fillText(singleLineText, x0 + 6, y0 - 6);
+            if (!isInlineEditingBlock) {
+                ctx.font = "bold 14px system-ui";
+                ctx.textBaseline = "bottom";
+                const singleLineText = (block.text || "").replace(/\n/g, ' ');
+                const measurements = ctx.measureText(singleLineText);
+                
+                ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+                ctx.fillRect(x0, y0 - 24, Math.min(width, measurements.width + 12), 24);
+                ctx.fillStyle = "#1a202c";
+                ctx.fillText(singleLineText, x0 + 6, y0 - 6);
+            }
+
+            // Bloque no modificado pero seleccionado: mostrar handles para facilitar resize.
+            if (_isResizeInteractiveBlock(block)) {
+                ctx.strokeStyle = "rgba(14, 165, 233, 0.95)";
+                ctx.lineWidth = 1;
+                ctx.strokeRect(x0, y0, width, height);
+                drawResizeHandles(ctx, block.bbox);
+            }
         }
     });
 
@@ -654,11 +1182,26 @@ function paintCanvasLayers(ctx, canvas, background, blocks) {
         ctx.textBaseline = 'top';
         ctx.fillText(`${order + 1}`, sx0 + 7, sy0 + 6);
     });
+
+    if (selectionMarquee) {
+        const { x0, y0, x1, y1 } = selectionMarquee;
+        const w = x1 - x0;
+        const h = y1 - y0;
+        ctx.save();
+        ctx.fillStyle = "rgba(14, 165, 233, 0.14)";
+        ctx.strokeStyle = "rgba(14, 165, 233, 0.95)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 4]);
+        ctx.fillRect(x0, y0, w, h);
+        ctx.strokeRect(x0, y0, w, h);
+        ctx.restore();
+    }
 }
 
 function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
     let isDragging   = false;
     let isResizing   = false;
+    let isMarqueeSelecting = false;
     let dragHasMoved = false;
 
     let dragTargetIndex   = -1;
@@ -668,6 +1211,8 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
 
     let dragOffsetX = 0;
     let dragOffsetY = 0;
+    let marqueeStartX = 0;
+    let marqueeStartY = 0;
 
     const MIN_BLOCK = 20; // tamaño mínimo en px al redimensionar
 
@@ -679,7 +1224,25 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
         };
     }
 
+    canvas.addEventListener("dblclick", (evt) => {
+        if (evt.button !== 0) return;
+        const physical = getPhysicalCoords(evt);
+        const clickedIdx = blocks.findIndex(block => {
+            const [x0, y0, x1, y1] = block.bbox;
+            return (physical.x >= x0 && physical.x <= x1 && physical.y >= y0 && physical.y <= y1);
+        });
+        if (clickedIdx !== -1) {
+            startInlineBlockEdit(blocks, clickedIdx, { ctx, canvas, bgImage });
+        }
+    });
+
     canvas.addEventListener("mousedown", (evt) => {
+        if (evt.button !== 0) return;
+
+        if (inlineEditorSession) {
+            _closeInlineEditor(true);
+        }
+
         const physical = getPhysicalCoords(evt);
         dragHasMoved = false;
 
@@ -706,17 +1269,16 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
             return;
         }
 
-        // Clic normal: si hay multi-selección activa, limpiarla
-        if (selectedBlockIndices.length > 0) {
+        // Clic normal: si hay multi-selección activa, limpiarla y continuar evaluación
+        if (selectedBlockIndices.length > 0 && !evt.ctrlKey) {
             selectedBlockIndices = [];
             document.getElementById("multi-toolbar").hidden = true;
             paintCanvasLayers(ctx, canvas, bgImage, blocks);
-            return;
         }
 
-        // 1. Comprobar handles de resize (solo en bloques modificados)
+        // 1. Comprobar handles de resize (bloques modificados o bloque seleccionado)
         for (let i = 0; i < blocks.length; i++) {
-            if (!blocks[i].is_modified) continue;
+            if (!_isResizeInteractiveBlock(blocks[i])) continue;
             const h = getResizeHandle(physical, blocks[i]);
             if (h) {
                 isResizing        = true;
@@ -747,13 +1309,32 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
             dragOffsetX = physical.x - block.bbox[0];
             dragOffsetY = physical.y - block.bbox[1];
         } else {
+            // Arrastre en zona vacía => selección por rectángulo
+            isMarqueeSelecting = true;
+            marqueeStartX = physical.x;
+            marqueeStartY = physical.y;
+            selectionMarquee = { x0: physical.x, y0: physical.y, x1: physical.x, y1: physical.y };
             clickTargetIndex = -1;
             document.getElementById("floating-toolbar").hidden = true;
+            document.getElementById("multi-toolbar").hidden = true;
         }
     });
 
     canvas.addEventListener("mousemove", (evt) => {
         const physical = getPhysicalCoords(evt);
+
+        if (isMarqueeSelecting) {
+            dragHasMoved = true;
+            selectionMarquee = {
+                x0: Math.min(marqueeStartX, physical.x),
+                y0: Math.min(marqueeStartY, physical.y),
+                x1: Math.max(marqueeStartX, physical.x),
+                y1: Math.max(marqueeStartY, physical.y)
+            };
+            paintCanvasLayers(ctx, canvas, bgImage, blocks);
+            canvas.style.cursor = "crosshair";
+            return;
+        }
 
         // ── Redimensionando ──
         if (isResizing && resizeTargetIndex !== -1) {
@@ -792,7 +1373,7 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
 
         // ── Solo hover: ajustar cursor ──
         for (const b of blocks) {
-            if (!b.is_modified) continue;
+            if (!_isResizeInteractiveBlock(b)) continue;
             const h = getResizeHandle(physical, b);
             if (h) { canvas.style.cursor = HANDLE_CURSORS[h]; return; }
         }
@@ -805,6 +1386,32 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
     });
 
     canvas.addEventListener("mouseup", (evt) => {
+        if (isMarqueeSelecting) {
+            isMarqueeSelecting = false;
+            const marquee = selectionMarquee;
+            selectionMarquee = null;
+
+            if (marquee && (marquee.x1 - marquee.x0 > 4 || marquee.y1 - marquee.y0 > 4)) {
+                const intersected = [];
+                blocks.forEach((block, idx) => {
+                    const [x0, y0, x1, y1] = block.bbox;
+                    if (_rectsIntersect(marquee, { x0, y0, x1, y1 })) {
+                        intersected.push(idx);
+                    }
+                });
+                selectedBlockIndices = intersected;
+            }
+
+            paintCanvasLayers(ctx, canvas, bgImage, blocks);
+
+            if (selectedBlockIndices.length >= 2) {
+                triggerMultiSelectToolbar(blocks, selectedBlockIndices, evt.clientX, evt.clientY);
+            } else {
+                document.getElementById("multi-toolbar").hidden = true;
+            }
+            return;
+        }
+
         // Fin de resize
         if (isResizing) {
             isResizing        = false;
@@ -823,10 +1430,11 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
             return;
         }
 
-        // Clic limpio → abrir toolbar de edición
+        // Clic limpio: abrir edición inline (si no hubo arrastre)
         if (clickTargetIndex !== -1) {
-            triggerVisualEditModal(blocks, clickTargetIndex,
-                {ctx, canvas, bgImage}, evt.clientX, evt.clientY);
+            currentTargetBlock = blocks[clickTargetIndex] || null;
+            document.getElementById("floating-toolbar").hidden = true;
+            startInlineBlockEdit(blocks, clickTargetIndex, { ctx, canvas, bgImage });
         }
 
         isDragging       = false;
@@ -837,6 +1445,8 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
     canvas.addEventListener("mouseleave", () => {
         isDragging        = false;
         isResizing        = false;
+        isMarqueeSelecting = false;
+        selectionMarquee = null;
         resizeHandle      = null;
         dragTargetIndex   = -1;
         resizeTargetIndex = -1;
@@ -869,6 +1479,9 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
 }
 
 function bindFloatingToolbarEvents() {
+    _makeToolbarDraggable("floating-toolbar");
+    _makeToolbarDraggable("multi-toolbar");
+
     document.getElementById("tb-close").onclick = () => {
         document.getElementById("floating-toolbar").hidden = true;
     };
@@ -1239,6 +1852,9 @@ export function mountExportControls(fullPayload) {
 export function mountKeyboardShortcuts() {
     window.addEventListener("keydown", (e) => {
         const isCtrl = e.ctrlKey || e.metaKey;
+        const activeElement = document.activeElement;
+        const tagName = activeElement?.tagName;
+        const isTypingContext = activeElement?.isContentEditable || tagName === "INPUT" || tagName === "TEXTAREA";
         
         // Ctrl + Z: Undo
         if (isCtrl && e.key.toLowerCase() === "z") {
@@ -1254,6 +1870,14 @@ export function mountKeyboardShortcuts() {
         if (isCtrl && e.key.toLowerCase() === "y") {
             e.preventDefault();
             performRedo();
+        }
+
+        // Supr/Delete: eliminar bloque activo o multiselección (excepto mientras se escribe)
+        if (!isCtrl && !isTypingContext && e.key === "Delete") {
+            const removed = deleteActiveBlocks();
+            if (removed) {
+                e.preventDefault();
+            }
         }
     });
     

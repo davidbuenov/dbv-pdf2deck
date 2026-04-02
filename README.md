@@ -52,6 +52,16 @@ NotebookLM PDF (imagen) → OCR Local → Editor Visual → PowerPoint Editable
 
 ---
 
+## Novedades de la versión 1.3.0
+
+- ✍️ **Edición inline estilo PowerPoint**: edición directa dentro del bloque con barra contextual blanca (sin dependencia del modal clásico).
+- 🎛️ **Toolbar contextual avanzada**: fuente, tamaño, alineación, color, transparencia, subrayado, interlineado y control de dimensiones `W/H`.
+- ↔️ **Selección por rectángulo**: arrastra en zona vacía para seleccionar múltiples bloques de una vez.
+- 🧩 **Paneles movibles**: barras flotantes arrastrables para evitar solapar contenido crítico.
+- 📏 **Calibración validada**: consistencia tipográfica PDF/PPTX dentro de tolerancias estrechas.
+
+---
+
 ## Stack Tecnológico
 
 ### Backend
@@ -148,12 +158,13 @@ Abre `http://localhost:5500` en tu navegador y ¡listo!
 
 1. **Arrastra y suelta** tu PDF en la zona de carga (o haz clic para seleccionarlo).
 2. Espera a que el OCR procese las páginas (4–40 segundos según GPU/CPU).
-3. Haz clic en cualquier caja de texto para editarla.
-4. Usa la barra flotante para cambiar fuente, tamaño, color, fondo y **alineación** (izquierda / centro / derecha).
+3. Haz clic en cualquier caja de texto para entrar en **edición inline** directamente sobre el bloque.
+4. Usa la barra contextual para cambiar fuente, tamaño, color, fondo, transparencia, **alineación**, **subrayado** e **interlineado**.
 5. **Ctrl+Click** en varios bloques para seleccionarlos juntos:
    - **⚖️ Igualar Estilos**: aplica el mismo tamaño, colores y alineación a todos.
    - **🔗 Fusionar**: une los bloques en uno solo (texto concatenado con saltos de línea).
-6. Navega entre páginas con los controles de paginación.
+6. También puedes seleccionar varios bloques arrastrando un rectángulo en una zona vacía del canvas.
+7. Navega entre páginas con los controles de paginación.
 
 ### Exportación
 

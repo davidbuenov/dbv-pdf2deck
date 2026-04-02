@@ -13,6 +13,34 @@ y el proyecto adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ---
 
+## [1.3.0] — 2026-04-02
+
+### Añadido en 1.3.0
+
+- **Edición inline tipo Office** en el bloque seleccionado, sin depender del modal clásico.
+- **Toolbar contextual blanca estilo PowerPoint** con controles de fuente, tamaño, color, alineación, negrita, cursiva, subrayado e interlineado.
+- **Subrayado (`is_underline`) e interlineado (`line_spacing`)** en el modelo de bloque del frontend.
+- **Controles W/H** en la barra inline para redimensionar el rectángulo durante edición.
+- **Toggle de vista de edición opaca/transparente** para mejorar legibilidad en bloques transparentes tras limpieza con IA.
+- **Selección por rectángulo (marquee)** arrastrando en zona vacía del canvas.
+- **Barras flotantes movibles** (arrastrables) para evitar bloqueos de interacción sobre el contenido.
+- **Smoke tests de exportación** para validar subrayado/interlineado y matriz de estilos en PDF/PPTX.
+- **Calibración de tamaño tipográfico** consolidada en `docs_david/test_files`.
+
+### Cambiado en 1.3.0
+
+- Se prioriza el flujo de **edición inline** para uso diario; la experiencia se aproxima a herramientas tipo PowerPoint.
+- Los **handles de resize** ahora también aparecen en bloques seleccionados aunque aún no estén marcados como modificados.
+- Mejora visual en edición sobre fondos transparentes: se evita el efecto de doble texto subyacente.
+- Se corrigen advertencias de tipado en exportador y scripts de pruebas internas sin alterar comportamiento runtime.
+
+### Corregido en 1.3.0
+
+- Ajustes de escala y consistencia tipográfica en exportación PDF/PPTX validados con calibración automática.
+- Errores de tipado estático en `exporter_engine.py` y en scripts de pruebas de `docs_david/test_files`.
+
+---
+
 ## [1.2.0] — 2026-04-02
 
 ### Añadido en 1.2.0
@@ -128,7 +156,8 @@ exportación a PowerPoint y PDF, e interfaz Canvas interactiva en el navegador.
 - **Corregido** — corrección de errores.
 - **Seguridad** — correcciones de vulnerabilidades.
 
-[Sin publicar]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.2.0...HEAD
+[Sin publicar]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/davidbuenov/dbv-pdf2deck/releases/tag/v1.0.0
