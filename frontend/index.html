@@ -68,9 +68,10 @@
                 <div class="toolbar-section">
                     <span class="toolbar-label">Inteligencia Artificial</span>
                     <div class="tool-group" style="padding: 0.25rem 0.5rem; gap: 0.5rem;">
-                        <input type="password" id="ai-api-key" placeholder="AI API Key (Opcional)" style="width: 15vw; max-width: 140px; font-size: 0.8rem;">
+                        <input type="password" id="ai-api-key" placeholder="Google AI Studio API Key (Opcional)" title="Introduce tu API Key de Google AI Studio" style="width: 18vw; max-width: 220px; font-size: 0.8rem;">
                         <button id="btn-save-key" title="Guardar Key Localmente" class="icon-btn" style="background: transparent; border: 1px solid rgba(255,255,255,0.2);">💾</button>
                     </div>
+                    <small class="helper-inline">Obtén la clave en <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer">Google AI Studio</a></small>
                     <button id="btn-clean-bg" class="magic-btn" title="Limpiar original eliminando el texto base con Nano Banana">✨ Limpiar Fondo</button>
                 </div>
                 
@@ -81,9 +82,16 @@
                         <option value="only_modified">Modificados Editable</option>
                         <option value="all_editable">Todo Editable</option>
                     </select>
-                    <button id="btn-export" class="primary-btn" style="background: linear-gradient(135deg, #10b981, #059669); padding: 0.75rem 1.5rem;">📥 Descargar PPTX/PDF</button>
+                    <div class="export-targets" aria-label="Formatos de exportación">
+                        <label><input type="checkbox" id="export-pdf" checked> .pdf</label>
+                        <label><input type="checkbox" id="export-pptx" checked> .pptx</label>
+                        <label><input type="checkbox" id="export-md" checked> .md</label>
+                    </div>
+                    <button id="btn-export" class="primary-btn" style="background: linear-gradient(135deg, #10b981, #059669); padding: 0.75rem 1.5rem;">📥 Descargar Selección</button>
                 </div>
             </div>
+
+            <p class="editor-tip">Tip: Mantén <strong>Ctrl</strong> y haz click en varios cuadros para multi-selección y edición por lotes.</p>
             
             <!-- CONTENEDOR VISUAL PRINCIPAL -->
             <div id="canvas-container" style="position: relative; background: transparent; border: none; padding: 0;">

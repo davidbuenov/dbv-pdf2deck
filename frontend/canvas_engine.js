@@ -19,6 +19,7 @@ const ZOOM_MAX = 3.0;
 const ZOOM_STEP = 0.1;
 const TEXT_BOX_PADDING = 8;
 const TEXT_LINE_HEIGHT_MULTIPLIER = 1.15;
+const EXPORT_TARGETS_STORAGE_KEY = "dbv_export_targets_v1";
 const _measurementCanvas = document.createElement("canvas");
 const _measurementCtx = _measurementCanvas.getContext("2d");
 
@@ -219,6 +220,35 @@ function normalizeBlock(block) {
     }
     if (block.text_align === undefined || block.text_align === null) block.text_align = "left";
     return block;
+}
+
+function loadExportTargetsPreference() {
+    const defaults = { pdf: true, pptx: true, md: true };
+    let targets = defaults;
+
+    try {
+        const raw = localStorage.getItem(EXPORT_TARGETS_STORAGE_KEY);
+        if (!raw) return defaults;
+
+        const parsed = JSON.parse(raw);
+        targets = {
+            pdf: parsed?.pdf !== false,
+            pptx: parsed?.pptx !== false,
+            md: parsed?.md !== false
+        };
+    } catch {
+        targets = defaults;
+    }
+
+    return targets;
+}
+
+function saveExportTargetsPreference(targets) {
+    try {
+        localStorage.setItem(EXPORT_TARGETS_STORAGE_KEY, JSON.stringify(targets));
+    } catch {
+        // En modo privado o con storage bloqueado, se omite persistencia sin romper UX.
+    }
 }
 
 function resolveEditableFontSize(block) {
@@ -1120,17 +1150,60 @@ function mergeSelectedBlocks(blocks, selectedIndices) {
 export function mountExportControls(fullPayload) {
     const btnExport = document.getElementById("btn-export");
     if (!btnExport) return;
+
+    const exportPdfInput = document.getElementById("export-pdf");
+    const exportPptxInput = document.getElementById("export-pptx");
+    const exportMdInput = document.getElementById("export-md");
+    if (!exportPdfInput || !exportPptxInput || !exportMdInput) return;
+
+    const savedTargets = loadExportTargetsPreference();
+    exportPdfInput.checked = !!savedTargets.pdf;
+    exportPptxInput.checked = !!savedTargets.pptx;
+    exportMdInput.checked = !!savedTargets.md;
+
+    const persistTargets = () => {
+        saveExportTargetsPreference({
+            pdf: !!exportPdfInput.checked,
+            pptx: !!exportPptxInput.checked,
+            md: !!exportMdInput.checked
+        });
+    };
+
+    exportPdfInput.addEventListener("change", persistTargets);
+    exportPptxInput.addEventListener("change", persistTargets);
+    exportMdInput.addEventListener("change", persistTargets);
     
     // Sobreescritura en caso de llamadas iterativas Paginadas
     btnExport.onclick = async () => {
         const originalText = btnExport.textContent;
-        btnExport.textContent = "⏳ Reconstruyendo Presentación Original...";
+        const exportPdf = !!exportPdfInput.checked;
+        const exportPptx = !!exportPptxInput.checked;
+        const exportMd = !!exportMdInput.checked;
+
+        if (!exportPdf && !exportPptx && !exportMd) {
+            alert("Selecciona al menos un formato: .pdf, .pptx o .md");
+            return;
+        }
+
+        const selectedLabels = [
+            exportPdf ? "PDF" : null,
+            exportPptx ? "PPTX" : null,
+            exportMd ? "MD" : null
+        ].filter(Boolean).join("/");
+
+        btnExport.textContent = `⏳ Generando ${selectedLabels}...`;
         btnExport.disabled = true;
         
         const exportModeSelect = document.getElementById("export-mode-select");
         if (exportModeSelect) {
             fullPayload.export_mode = exportModeSelect.value;
         }
+        fullPayload.export_targets = {
+            pdf: exportPdf,
+            pptx: exportPptx,
+            md: exportMd
+        };
+        saveExportTargetsPreference(fullPayload.export_targets);
         
         try {
             const resp = await fetch("http://localhost:8000/api/v1/export", {
@@ -1149,6 +1222,7 @@ export function mountExportControls(fullPayload) {
             a.download = "Presentacion_Editada_DBV.zip";
             document.body.appendChild(a);
             a.click();
+            a.remove();
             window.URL.revokeObjectURL(url);
         } catch(err) {
             alert(`[Error API]: ${err.message}`);

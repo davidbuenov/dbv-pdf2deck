@@ -70,6 +70,7 @@ class ProcessResponse(BaseModel):
     doc_id: str | None = None
     total_pages: int
     export_mode: str = "only_modified"
+    export_targets: dict[str, bool] = {"pdf": True, "pptx": True, "md": True}
     pages: list[PageResponse]
 
 class CleanBackgroundRequest(BaseModel):
@@ -291,6 +292,11 @@ async def export_document(payload: ProcessResponse, bg_tasks: BackgroundTasks):
     """
     try:
         dict_payload = payload.model_dump()
+        export_targets = payload.export_targets
+        has_any_target = bool(export_targets.get("pdf", False) or export_targets.get("pptx", False) or export_targets.get("md", False))
+        if not has_any_target:
+            raise HTTPException(status_code=400, detail="Debes seleccionar al menos un formato de exportación (PDF, PPTX o Markdown).")
+
         source_pdf_path = None
         if payload.doc_id and payload.doc_id in DOCUMENT_STORE:
             source_pdf_path = DOCUMENT_STORE[payload.doc_id]

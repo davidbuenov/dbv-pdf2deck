@@ -13,9 +13,34 @@ y el proyecto adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ---
 
+## [1.2.0] — 2026-04-02
+
+### Añadido en 1.2.0
+
+- **Exportación a Markdown (`.md`)** incluida dentro del ZIP de salida junto con PowerPoint y PDF.
+- **Reconstrucción de Markdown para PDFs de imagen** usando los bloques OCR ya procesados por el editor.
+- **Preservación de hipervínculos ocultos** en la exportación Markdown cuando el PDF original contiene enlaces embebidos.
+- **Detección de URLs visibles** para convertirlas automáticamente a formato Markdown (`[texto](url)`).
+- **Heurística de orden de lectura visual** para mejorar slides con columnas, tarjetas o rejillas simples.
+- **Filtrado de ruido OCR** para descartar artefactos cortos como marcas numéricas aisladas o la firma `NotebookLM` en el Markdown exportado.
+- **Selector de formatos de exportación en UI** con checkboxes para `.pdf`, `.pptx` y `.md`.
+- **Campo AI aclarado** como clave específica de Google AI Studio, con enlace de ayuda directo.
+- **Tip visible de multi-selección** en el editor para recordar el uso de `Ctrl+Click`.
+- **Guía paso a paso para usuarios no informáticos en Windows** con instalación desde cero, alternativa a `git clone` y configuración de AI Studio.
+- **Guía paso a paso para usuarios no informáticos en macOS** con instalación desde cero y arranque manual del proyecto.
+- **Índice y navegación cruzada** entre las guías de Windows y macOS.
+
+### Cambiado en 1.2.0
+
+- El botón principal de exportación pasa a generar **PPTX + PDF + Markdown**.
+- El backend evita generar formatos no seleccionados por el usuario, reduciendo tiempo de exportación.
+- El `README` ahora documenta la nueva exportación múltiple y enlaza las guías para usuarios no técnicos al inicio de la instalación.
+
+---
+
 ## [1.1.0] — 2026-04-01
 
-### Añadido
+### Añadido en 1.1.0
 
 - **Multi-selección de bloques** (`Ctrl+Click`): selección múltiple de cajas de texto resaltadas en naranja con badge numerado.
 - **Toolbar de multi-selección** flotante: se abre automáticamente al seleccionar ≥2 bloques con `Ctrl+Click`.
@@ -32,9 +57,10 @@ y el proyecto adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 Primera versión pública del proyecto. Editor visual de PDFs de solo imagen con OCR local,
 exportación a PowerPoint y PDF, e interfaz Canvas interactiva en el navegador.
 
-### Añadido
+### Añadido en 1.0.0
 
 #### Backend (Python / FastAPI)
+
 - Motor OCR local con **EasyOCR + PyTorch** para extracción de texto de PDFs de imagen.
 - Soporte de **aceleración GPU CUDA** (NVIDIA) — reduce el tiempo de OCR de ~40s a ~4s por página.
 - Detección automática de PDFs con texto nativo (vectorial) vs. solo imagen (rasterizado).
@@ -51,6 +77,7 @@ exportación a PowerPoint y PDF, e interfaz Canvas interactiva en el navegador.
 - Script de diagnóstico de GPU (`test_cuda.py`).
 
 #### Frontend (Vanilla JS / HTML5 Canvas)
+
 - **Editor visual Canvas** en el navegador: renderizado de la imagen de fondo con capas de texto superpuestas.
 - **Drag & Drop** de archivo PDF en la zona de carga, con fallback a selector de archivos.
 - **Consola de progreso asíncrono** (streaming SSE) con log en tiempo real del procesamiento OCR.
@@ -75,12 +102,14 @@ exportación a PowerPoint y PDF, e interfaz Canvas interactiva en el navegador.
 - Selector de modo de exportación integrado en la barra superior.
 
 #### Diseño e Interfaz
+
 - Diseño **Glassmorphism dark mode** con variables CSS, gradientes y efectos de desenfoque.
 - Tipografía `system-ui` con jerarquía de estilos coherente.
 - Disposición responsive con barra de herramientas superior fija (Top Ribbon).
 - Indicadores de estado duales (paginación y zoom en top y bottom del canvas).
 
 #### Documentación
+
 - `README.md` bilingüe (ES/EN) con instrucciones de instalación, uso y estructura.
 - `docs/instalar_cuda.md` — guía detallada de instalación de PyTorch con CUDA.
 - `docs/STYLEGUIDE.md` — guía de estilo y estándares de calidad del código.
@@ -99,6 +128,7 @@ exportación a PowerPoint y PDF, e interfaz Canvas interactiva en el navegador.
 - **Corregido** — corrección de errores.
 - **Seguridad** — correcciones de vulnerabilidades.
 
-[Sin publicar]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.1.0...HEAD
+[Sin publicar]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/davidbuenov/dbv-pdf2deck/releases/tag/v1.0.0

@@ -244,6 +244,42 @@ button:disabled {
     border: 1px solid rgba(255,255,255,0.05);
 }
 
+.helper-inline {
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    margin-top: -0.15rem;
+}
+
+.helper-inline a {
+    color: #93c5fd;
+    text-decoration: underline;
+}
+
+.export-targets {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: rgba(15, 23, 42, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 0.35rem 0.55rem;
+}
+
+.export-targets label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.8rem;
+    color: var(--color-text);
+    cursor: pointer;
+}
+
+.editor-tip {
+    margin: 0.2rem 0 0.8rem 0.2rem;
+    color: var(--color-text-muted);
+    font-size: 0.85rem;
+}
+
 td, input, select, textarea {
     background: var(--color-bg);
     color: var(--color-text);

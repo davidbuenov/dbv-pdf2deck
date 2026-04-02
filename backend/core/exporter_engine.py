@@ -14,6 +14,7 @@ import tempfile
 from pathlib import Path
 
 import fitz
+from .markdown_exporter import build_markdown_export
 try:
     from pptx import Presentation
     from pptx.util import Pt
@@ -425,16 +426,30 @@ def generate_export_zip(payload_dict: dict, source_pdf_path: Path | None = None)
     """
     temp_dir = Path(tempfile.mkdtemp())
     zip_path = temp_dir / "export.zip"
-    
-    if source_pdf_path and source_pdf_path.exists():
-        pdf_bytes = build_pdf_export_from_original(payload_dict, source_pdf_path)
-    else:
-        pdf_bytes = build_pdf_export(payload_dict)
+
+    raw_targets = payload_dict.get("export_targets") or {}
+    export_pdf = bool(raw_targets.get("pdf", True))
+    export_pptx = bool(raw_targets.get("pptx", True))
+    export_md = bool(raw_targets.get("md", True))
+
+    # Guard rail por robustez: evitar ZIP vacío cuando el cliente no define nada explícito.
+    if not (export_pdf or export_pptx or export_md):
+        export_pdf = True
+        export_pptx = True
+        export_md = True
     
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-        zipf.writestr("Presentacion_Editada_Impresa.pdf", pdf_bytes)
-        
-        if PPTX_AVAILABLE:
+        if export_pdf:
+            if source_pdf_path and source_pdf_path.exists():
+                pdf_bytes = build_pdf_export_from_original(payload_dict, source_pdf_path)
+            else:
+                pdf_bytes = build_pdf_export(payload_dict)
+            zipf.writestr("Presentacion_Editada_Impresa.pdf", pdf_bytes)
+
+        if export_md:
+            zipf.writestr("Presentacion_Editada_DBV.md", build_markdown_export(payload_dict, source_pdf_path))
+
+        if export_pptx and PPTX_AVAILABLE:
             pptx_bytes = build_pptx_export(payload_dict)
             zipf.writestr("Presentacion_Editada_DBV.pptx", pptx_bytes)
             

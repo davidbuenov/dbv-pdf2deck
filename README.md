@@ -46,7 +46,7 @@ NotebookLM PDF (imagen) → OCR Local → Editor Visual → PowerPoint Editable
 | 🔍 **Multi-selección** | `Ctrl+Click` para seleccionar varios bloques. Igualación de estilos o fusión en uno. |
 | ↖️ **Alineación de texto** | Control izquierda / centro / derecha en cada bloque. Se exporta a PDF y PPTX. |
 | ✨ **IA Generativa** | Función opcional de limpieza de fondos con Gemini (requiere API Key). |
-| 📥 **Exportación dual** | Descarga simultánea en PowerPoint (.pptx) y PDF (vectorial). |
+| 📥 **Exportación múltiple** | Descarga simultánea en PowerPoint (.pptx), PDF (vectorial) y Markdown (.md). |
 | ↩️ **Undo / Redo** | Historial de 50 estados. Ctrl+Z / Ctrl+Y en el editor. |
 | 🔒 **Privacidad total** | Los documentos nunca salen de tu máquina (salvo uso voluntario de IA). |
 
@@ -157,18 +157,25 @@ Abre `http://localhost:5500` en tu navegador y ¡listo!
 
 ### Exportación
 
-Pulsa el botón **"📥 Descargar PPTX/PDF"** para generar ambos archivos simultáneamente. Se descargará un archivo `.zip` con:
+En la barra de salida puedes marcar qué formatos quieres generar (`.pdf`, `.pptx`, `.md`) antes de descargar.
+
+Pulsa el botón **"📥 Descargar Selección"** para generar solo los formatos marcados. Se descargará un archivo `.zip` con:
 - `documento_editado.pptx` — Presentación de PowerPoint con cajas editables
 - `documento_editado.pdf` — PDF con el texto modificado superpuesto
+- `documento_editado.md` — Versión Markdown pensada para reutilización textual, documentación o LLMs
+
+Cuando el PDF original contiene hipervínculos ocultos, la exportación Markdown intenta preservarlos en formato `[texto](url)`.
 
 ### IA Generativa (Opcional)
 
 Para usar la función de limpieza de fondos con IA:
 1. Obtén una API Key gratuita en [Google AI Studio](https://aistudio.google.com/).
-2. Pégala en el campo **"AI API Key"** de la barra superior.
+2. Pégala en el campo **"Google AI Studio API Key"** de la barra superior.
 3. Haz clic en **"✨ Limpiar Fondo"** para procesar la página actual.
 
 > La API Key se guarda localmente en tu navegador (`localStorage`). Nunca se envía a nuestros servidores.
+
+> 💡 Consejo de edición rápida: usa **Ctrl+Click** sobre varios bloques para activar la multi-selección y editar estilos por lotes.
 
 ---
 
