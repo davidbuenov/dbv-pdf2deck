@@ -81,10 +81,14 @@ NotebookLM PDF (imagen) → OCR Local → Editor Visual → PowerPoint Editable
 
 ## Instalación y Arranque
 
+> 🧭 **¿No eres informático/a?** Sigue la guía completa paso a paso:
+> - Windows: [Guía para No Informáticos (Windows)](docs/GUIA_NO_INFORMATICOS.md)
+> - macOS: [Guía para No Informáticos (macOS)](docs/GUIA_MAC_NO_INFORMATICOS.md)
+
 ### 1. Clonar el repositorio
 
 ```bash
-git clone https://github.com/tu-usuario/dbv-pdf2deck.git
+git clone https://github.com/davidbuenov/dbv-pdf2deck.git
 cd dbv-pdf2deck
 ```
 
