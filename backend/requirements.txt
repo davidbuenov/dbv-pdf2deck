@@ -14,6 +14,7 @@ python-pptx>=0.6.23
 
 # Manipulacion auxiliar de imágenes y visuales
 Pillow>=10.2.0
+opencv-python-headless>=4.10.0
 
 # Motor de OCR estable con soporte CUDA (GPU) o CPU
 easyocr>=1.7.1

@@ -16,9 +16,10 @@ Si usas Windows, ve directamente aquí: [Guía para No Informáticos (Windows)](
 4. [Instalar Python 3.12 (obligatorio)](#instalar-python-312-obligatorio)
 5. [Primera puesta en marcha de la app](#primera-puesta-en-marcha-de-la-app)
 6. [Cómo conseguir la API Key de AI Studio (paso a paso)](#como-conseguir-la-api-key-de-ai-studio-paso-a-paso)
-7. [Solución de problemas frecuentes](#solucion-de-problemas-frecuentes)
-8. [Cerrar la aplicación](#cerrar-la-aplicacion)
-9. [Resumen rápido](#resumen-rapido)
+7. [Actualizar a la última versión](#actualizar-a-la-ultima-version)
+8. [Solución de problemas frecuentes](#solucion-de-problemas-frecuentes)
+9. [Cerrar la aplicación](#cerrar-la-aplicacion)
+10. [Resumen rápido](#resumen-rapido)
 
 ---
 
@@ -48,7 +49,7 @@ Si no quieres usar Git, este método es el más sencillo.
 5. Mueve la carpeta descomprimida a un lugar cómodo, por ejemplo al Escritorio.
 6. Opcional: renombra la carpeta a `dbv-pdf2deck` para que coincida con esta guía.
 
-Importante: al terminar, debes ver una carpeta con archivos como README.md, start_dev.bat, backend, frontend, etc.
+Importante: al terminar, debes ver una carpeta con archivos como README.md, backend, frontend, etc.
 
 ---
 
@@ -209,6 +210,38 @@ Importante:
 
 - La clave se guarda en tu navegador (en local).
 - No compartas tu API Key con otras personas.
+
+---
+
+## Actualizar a la última versión
+
+Si ya tenías DBV PDF2Deck funcionando y quieres actualizar sin reinstalar desde cero:
+
+1. En las terminales donde esté corriendo la app, pulsa `Control + C` para detener backend y frontend.
+2. Abre una terminal nueva y entra en la carpeta del proyecto (ejemplo):
+
+```bash
+cd ~/dbv-pdf2deck
+```
+
+3. Si usas Git, actualiza el código:
+
+```bash
+git pull --ff-only
+```
+
+4. Actualiza dependencias del backend:
+
+```bash
+cd backend
+source venv/bin/activate
+pip install -r requirements.txt
+cd ..
+```
+
+5. Arranca otra vez backend y frontend como en la sección de primera puesta en marcha.
+
+Si descargaste por ZIP y no usas Git, descarga el ZIP más reciente, reemplaza tu carpeta y repite la puesta en marcha.
 
 ---
 

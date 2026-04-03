@@ -65,14 +65,26 @@
                 </div>
 
                 <!-- Group 2: AI Magic -->
-                <div class="toolbar-section">
+                <div class="toolbar-section ai-section">
                     <span class="toolbar-label">Inteligencia Artificial</span>
-                    <div class="tool-group" style="padding: 0.25rem 0.5rem; gap: 0.5rem;">
+                    <div class="tool-group ai-input-row" style="padding: 0.25rem 0.5rem; gap: 0.5rem;">
                         <input type="password" id="ai-api-key" placeholder="Google AI Studio API Key (Opcional)" title="Introduce tu API Key de Google AI Studio" style="width: 18vw; max-width: 220px; font-size: 0.8rem;">
+                        <div class="ai-mode-stack">
+                            <select id="clean-mode" title="Modo de limpieza de fondo" style="font-size: 0.8rem; max-width: 140px;">
+                                <option value="auto">Auto</option>
+                                <option value="local">Local (OpenCV)</option>
+                                <option value="cloud">Cloud (AI Studio)</option>
+                            </select>
+                            <button id="btn-clean-bg" class="magic-btn" title="Limpia fondo con modo Auto/Local/Cloud">✨ Limpiar Fondo</button>
+                        </div>
                         <button id="btn-save-key" title="Guardar Key Localmente" class="icon-btn" style="background: transparent; border: 1px solid rgba(255,255,255,0.2);">💾</button>
                     </div>
-                    <small class="helper-inline">Obtén la clave en <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer">Google AI Studio</a></small>
-                    <button id="btn-clean-bg" class="magic-btn" title="Limpiar original eliminando el texto base con Nano Banana">✨ Limpiar Fondo</button>
+                    <div class="ai-meta-row">
+                        <div class="ai-helper-wrap">
+                            <small class="helper-inline">Obtén la clave en <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer">Google AI Studio</a></small>
+                            <small class="helper-inline" id="clean-mode-indicator">Modo activo: Auto</small>
+                        </div>
+                    </div>
                 </div>
                 
                 <!-- Group 3: Export -->
@@ -216,6 +228,7 @@
             
             <div class="tb-actions">
                <button id="tb-close" style="background:#475569; color:white; width: 40px;" title="Descartar Cambios">✖</button>
+                    <button id="tb-delete" style="background:#b91c1c; color:white; width: 40px;" title="Eliminar bloque">🗑</button>
                <button id="tb-save" style="background:linear-gradient(135deg, #10b981, #059669); color:white; flex-grow:1;" title="Guardar Bloque">✓ Confirmar Edición</button>
             </div>
         </div>

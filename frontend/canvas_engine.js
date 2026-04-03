@@ -355,6 +355,7 @@ let currentTargetInitialFontLock = false;
 let selectionMarquee = null;
 let inlineEditorSession = null;
 let inlineEditOpaqueMode = true;
+let inlineToolbarPointerDown = false;
 
 function _inlineToolbarElement() {
     const toolbar = document.getElementById("inline-toolbar");
@@ -559,6 +560,16 @@ function _syncInlineToolbarFromBlock(block) {
 function _bindInlineToolbarEvents() {
     const toolbar = _inlineToolbarElement();
     if (!toolbar || toolbar.dataset.bound === "true") return;
+
+    toolbar.addEventListener("mousedown", () => {
+        inlineToolbarPointerDown = true;
+    });
+    toolbar.addEventListener("mouseup", () => {
+        // Dejar un pequeño margen para que onblur (setTimeout 0) detecte interacción de toolbar
+        window.setTimeout(() => {
+            inlineToolbarPointerDown = false;
+        }, 0);
+    });
 
     try {
         const rawMode = localStorage.getItem(INLINE_EDIT_BG_MODE_STORAGE_KEY);
@@ -765,6 +776,7 @@ function startInlineBlockEdit(blocks, targetIndex, ctxScope) {
     editor.onblur = () => {
         window.setTimeout(() => {
             if (!inlineEditorSession) return;
+            if (inlineToolbarPointerDown) return;
             const active = document.activeElement;
             const toolbar = _inlineToolbarElement();
             if (toolbar && active && toolbar.contains(active)) {
@@ -900,40 +912,90 @@ export function initPagination(fullData) {
     
     // Lógica para Nano Banana API Key
     const apiKeyInput = document.getElementById("ai-api-key");
+    const cleanModeSelect = document.getElementById("clean-mode");
+    const cleanModeIndicator = document.getElementById("clean-mode-indicator");
     const btnSaveKey = document.getElementById("btn-save-key");
+
+    const refreshCleanModeIndicator = () => {
+        if (!cleanModeIndicator) return;
+        const mode = cleanModeSelect?.value || "auto";
+        const hasKey = !!apiKeyInput?.value?.trim();
+        if (mode === "local") {
+            cleanModeIndicator.textContent = "Modo activo: Local (OpenCV)";
+        } else if (mode === "cloud") {
+            cleanModeIndicator.textContent = "Modo activo: Cloud (AI Studio)";
+        } else {
+            cleanModeIndicator.textContent = hasKey
+                ? "Modo activo: Auto → Cloud"
+                : "Modo activo: Auto → Local";
+        }
+    };
+
     if (apiKeyInput && btnSaveKey) {
         apiKeyInput.value = localStorage.getItem("dbv_nano_banana_key") || "";
+        if (cleanModeSelect) {
+            cleanModeSelect.value = localStorage.getItem("dbv_clean_bg_mode") || "auto";
+            cleanModeSelect.onchange = () => {
+                localStorage.setItem("dbv_clean_bg_mode", cleanModeSelect.value);
+                refreshCleanModeIndicator();
+            };
+        }
+        apiKeyInput.addEventListener("input", refreshCleanModeIndicator);
+        refreshCleanModeIndicator();
         btnSaveKey.onclick = () => {
             localStorage.setItem("dbv_nano_banana_key", apiKeyInput.value);
             btnSaveKey.textContent = "¡Guardada ✓!";
             setTimeout(() => btnSaveKey.textContent = "Guardar Local", 2000);
+            refreshCleanModeIndicator();
         };
     }
     
-    // Lógica para ✨ Limpiar Fondo con IA
+    // Lógica para ✨ Limpiar Fondo
     const btnCleanBg = document.getElementById("btn-clean-bg");
     if (btnCleanBg) {
         btnCleanBg.onclick = async () => {
             const key = document.getElementById("ai-api-key")?.value?.trim();
-            if (!key) {
-                alert("Por favor, introduce tu API Key de Google AI Studio arriba para usar Nano Banana.");
+            const selectedMode = cleanModeSelect?.value || "auto";
+            const useCloud = selectedMode === "cloud" || (selectedMode === "auto" && !!key);
+
+            if (selectedMode === "cloud" && !key) {
+                alert("Modo Cloud seleccionado, pero no hay API Key. Añádela o cambia a Local/Auto.");
                 return;
             }
             
             const originalText = btnCleanBg.textContent;
-            btnCleanBg.textContent = "⏳ Procesando en AI Studio...";
+            btnCleanBg.textContent = useCloud ? "⏳ Limpiando en AI Studio..." : "⏳ Limpiando localmente...";
             btnCleanBg.disabled = true;
             
             const currentPage = globalPayload.pages[currentActivePageIndex];
             
             try {
-                const resp = await fetch("http://localhost:8000/api/v1/clean-background", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
+                const endpoint = useCloud
+                    ? "http://localhost:8000/api/v1/clean-background"
+                    : "http://localhost:8000/api/v1/clean-background-local";
+
+                const localBoxes = (currentPage.blocks || [])
+                    .filter(b => Array.isArray(b.bbox) && b.bbox.length === 4)
+                    .map(b => ({ bbox: b.bbox }));
+
+                if (!useCloud && localBoxes.length === 0) {
+                    throw new Error("No hay bloques con coordenadas para limpiar en modo local.");
+                }
+
+                const payload = useCloud
+                    ? {
                         image_base64: currentPage.image_base64,
                         api_key: key
-                    })
+                    }
+                    : {
+                        image_base64: currentPage.image_base64,
+                        boxes: localBoxes
+                    };
+
+                const resp = await fetch(endpoint, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
                 });
                 
                 if (!resp.ok) {
@@ -959,7 +1021,7 @@ export function initPagination(fullData) {
                 cycleViewEngine();
                 
             } catch (err) {
-                alert(`Error al limpiar fondo con IA: ${err.message}`);
+                alert(`Error al limpiar fondo: ${err.message}`);
             } finally {
                 btnCleanBg.textContent = originalText;
                 btnCleanBg.disabled = false;
@@ -1485,6 +1547,16 @@ function bindFloatingToolbarEvents() {
     document.getElementById("tb-close").onclick = () => {
         document.getElementById("floating-toolbar").hidden = true;
     };
+
+    const tbDelete = document.getElementById("tb-delete");
+    if (tbDelete) {
+        tbDelete.onclick = () => {
+            if (!currentTargetBlock) return;
+            const ok = window.confirm("¿Eliminar este bloque de texto?");
+            if (!ok) return;
+            deleteActiveBlocks();
+        };
+    }
     
     document.getElementById("tb-save").onclick = () => {
         if (!currentTargetBlock) return;

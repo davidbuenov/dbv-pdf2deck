@@ -13,7 +13,7 @@ from typing import Any
 import asyncio
 from datetime import datetime
 
-from fastapi import APIRouter, File, UploadFile, HTTPException
+from fastapi import APIRouter, File, UploadFile, HTTPException, Form
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from fastapi.background import BackgroundTasks
 from pydantic import BaseModel
@@ -24,7 +24,7 @@ import base64
 import shutil
 from core.ocr_engine import analyze_image, OCRBlock
 from core.exporter_engine import generate_export_zip
-from core.ai_cleaner import clean_image_with_ai
+from core.ai_cleaner import clean_image_with_ai, clean_image_with_inpaint
 from core.result import Ok, Err
 
 # Enrutador asilado para versionar la API elegantemente
@@ -78,6 +78,11 @@ class CleanBackgroundRequest(BaseModel):
     api_key: str
 
 
+class CleanBackgroundLocalRequest(BaseModel):
+    image_base64: str
+    boxes: list[dict[str, Any]] = []
+
+
 @router.get("/process-log-stream/{doc_id}")
 async def stream_process_logs(doc_id: str):
     """
@@ -117,7 +122,7 @@ async def stream_process_logs(doc_id: str):
 
 
 @router.post("/process", response_model=ProcessResponse)
-def process_document(file: UploadFile = File(...)) -> ProcessResponse:
+def process_document(file: UploadFile = File(...), doc_id: str | None = Form(None)) -> ProcessResponse:
     """
     Ingesta un archivo PDF del formulario cliente, lo guarda temporalmente mediante
     context managers de Python, lo rasteriza resolviendo las páginas como imágenes
@@ -147,7 +152,14 @@ def process_document(file: UploadFile = File(...)) -> ProcessResponse:
         tmp_file.write(file.file.read())
         tmp_path = Path(tmp_file.name)
         
-    doc_id = str(uuid.uuid4())
+    # Permitir que el frontend suministre doc_id para abrir SSE antes del POST /process.
+    # Si no se recibe, se genera uno nuevo (compatibilidad retroactiva).
+    doc_id = (doc_id or "").strip() or str(uuid.uuid4())
+
+    # Crear cola desde el inicio para no perder logs tempranos aunque el SSE conecte tarde.
+    if doc_id not in LOG_QUEUES:
+        LOG_QUEUES[doc_id] = asyncio.Queue(maxsize=200)
+
     persisted_pdf_path = DOCS_DIR / f"{doc_id}.pdf"
 
     try:
@@ -280,6 +292,19 @@ def clean_background_endpoint(payload: CleanBackgroundRequest):
     """
     try:
         new_b64 = clean_image_with_ai(payload.image_base64, payload.api_key)
+        return {"image_base64": new_b64}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/clean-background-local")
+def clean_background_local_endpoint(payload: CleanBackgroundLocalRequest):
+    """
+    Limpieza local de fondo con OpenCV inpainting a partir de los bboxes.
+    No requiere API key ni servicios externos.
+    """
+    try:
+        new_b64 = clean_image_with_inpaint(payload.image_base64, payload.boxes)
         return {"image_base64": new_b64}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -14,11 +14,13 @@ Si usas Mac, ve directamente a la guía para macOS: [Guía para No Informáticos
 2. [Camino recomendado (sin usar Git): descargar ZIP](#camino-recomendado-sin-usar-git-descargar-zip)
 3. [Camino alternativo (si prefieres Git)](#camino-alternativo-si-prefieres-git)
 4. [Instalar Python (obligatorio)](#instalar-python-obligatorio)
-5. [Primera puesta en marcha de la app](#primera-puesta-en-marcha-de-la-app)
-6. [Cómo conseguir la API Key de AI Studio (paso a paso)](#como-conseguir-la-api-key-de-ai-studio-paso-a-paso)
-7. [Solución de problemas frecuentes](#solucion-de-problemas-frecuentes)
-8. [Cerrar la aplicación](#cerrar-la-aplicacion)
-9. [Resumen rápido](#resumen-rapido)
+5. [Primera puesta en marcha (recomendada: 1 clic)](#primera-puesta-en-marcha-recomendada-1-clic)
+6. [Modo manual (avanzado)](#modo-manual-avanzado)
+7. [Como conseguir la API Key de AI Studio (paso a paso)](#como-conseguir-la-api-key-de-ai-studio-paso-a-paso)
+8. [Actualizar a la ultima version](#actualizar-a-la-ultima-version)
+9. [Solucion de problemas frecuentes](#solucion-de-problemas-frecuentes)
+10. [Cerrar la aplicacion](#cerrar-la-aplicacion)
+11. [Resumen rapido](#resumen-rapido)
 
 ---
 
@@ -49,7 +51,7 @@ Si no quieres instalar Git, usa este método.
 6. Elige una carpeta fácil de recordar, por ejemplo:
    - `C:\dbv-pdf2deck`
 
-Importante: al terminar, debes ver una carpeta con archivos como README.md, start_dev.bat, backend, frontend, etc.
+Importante: al terminar, debes ver una carpeta con archivos como README.md, start_dev.cmd, backend, frontend, etc.
 
 ---
 
@@ -106,7 +108,7 @@ py -3.12 --version
 
 ---
 
-## Primera puesta en marcha de la app
+## Primera puesta en marcha (recomendada: 1 clic)
 
 ### 1) Entrar en la carpeta del proyecto
 
@@ -118,7 +120,35 @@ cd C:\dbv-pdf2deck
 
 Si usaste Git y clonaste en otra ruta, usa esa ruta.
 
-### 2) Crear entorno virtual e instalar dependencias
+### 2) Ejecutar el instalador automático
+
+Haz doble clic en:
+
+- `instalar_y_ejecutar.cmd`
+
+Este script hace todo automáticamente:
+
+- detecta Python,
+- crea el entorno virtual,
+- instala dependencias,
+- arranca backend y frontend,
+- abre la web en tu navegador.
+
+Si no detecta Python, abrirá automáticamente la página de descarga oficial y te mostrará los pasos en pantalla.
+
+### 3) Abrir la app en el navegador (modo manual)
+
+Normalmente se abre sola. Si no, abre:
+
+- http://localhost:5500
+
+---
+
+## Modo manual (avanzado)
+
+Solo si prefieres hacerlo a mano.
+
+### 1) Crear entorno virtual e instalar dependencias
 
 Ejecuta estos comandos uno por uno:
 
@@ -131,7 +161,7 @@ pip install -r requirements.txt
 
 Nota: la primera instalación puede tardar varios minutos.
 
-### 3) Arrancar la aplicación
+### 2) Arrancar la aplicación
 
 1. Vuelve a la carpeta principal:
 
@@ -139,15 +169,15 @@ Nota: la primera instalación puede tardar varios minutos.
 cd ..
 ```
 
-2. Arranca todo con doble clic en `start_dev.bat`.
+2. Arranca todo con doble clic en `start_dev.cmd`.
 
 También puedes arrancarlo con comando:
 
 ```cmd
-start_dev.bat
+start_dev.cmd
 ```
 
-### 4) Abrir la app en el navegador
+### 3) Abrir la app en el navegador
 
 Abre:
 
@@ -157,7 +187,7 @@ Si todo va bien, verás la interfaz para cargar tu PDF.
 
 ---
 
-## Cómo conseguir la API Key de AI Studio (paso a paso)
+## Como conseguir la API Key de AI Studio (paso a paso)
 
 La API Key solo es necesaria si quieres usar la función **"Limpiar Fondo"** con IA.
 
@@ -191,7 +221,40 @@ Importante:
 
 ---
 
-## Solución de problemas frecuentes
+## Actualizar a la ultima version
+
+Si ya tenías DBV PDF2Deck instalado y quieres actualizar sin reinstalar todo:
+
+1. Cierra la aplicación con doble clic en `stop_dev.cmd`.
+2. Abre **Símbolo del sistema** (cmd).
+3. Entra en tu carpeta del proyecto (por ejemplo):
+
+```cmd
+cd C:\dbv-pdf2deck
+```
+
+4. Si usas Git, actualiza el proyecto:
+
+```cmd
+git pull --ff-only
+```
+
+5. Actualiza dependencias del backend:
+
+```cmd
+cd backend
+venv\Scripts\activate
+pip install -r requirements.txt
+cd ..
+```
+
+6. Inicia de nuevo con doble clic en `ejecutar_dbv.cmd` (o `start_dev.cmd`).
+
+Si descargaste por ZIP y no usas Git, vuelve a descargar el ZIP más reciente, reemplaza la carpeta y ejecuta `instalar_y_ejecutar.cmd`.
+
+---
+
+## Solucion de problemas frecuentes
 
 ### "'py' no se reconoce como comando"
 
@@ -201,7 +264,7 @@ Importante:
 ### "No se abre localhost:5500"
 
 - Es posible que la app no arrancara bien.
-- Cierra ventanas de terminal, ejecuta otra vez `start_dev.bat` y espera 20-30 segundos.
+- Cierra ventanas de terminal, ejecuta otra vez `start_dev.cmd` y espera 20-30 segundos.
 
 ### "Error al instalar dependencias"
 
@@ -216,20 +279,19 @@ pip install -r requirements.txt
 
 ---
 
-## Cerrar la aplicación
+## Cerrar la aplicacion
 
-Haz doble clic en `stop_dev.bat` para cerrar backend y frontend.
+Haz doble clic en `stop_dev.cmd` para cerrar backend y frontend.
 
 ---
 
-## Resumen rápido
+## Resumen rapido
 
 1. Descarga el proyecto (ZIP o Git).
 2. Instala Python 3.12.
-3. Instala dependencias en `backend`.
-4. Ejecuta `start_dev.bat`.
-5. Abre http://localhost:5500.
-6. (Opcional) Crea API Key en AI Studio y pégala en la app.
+3. Ejecuta `instalar_y_ejecutar.cmd`.
+4. Abre http://localhost:5500.
+5. (Opcional) Crea API Key en AI Studio y pégala en la app.
 
 ---
 

@@ -16,6 +16,9 @@ const logBox = document.getElementById("log-container");
 const logConsole = document.getElementById("log-console");
 let ingestHeartbeatTimer = null;
 let serverEventSource = null;
+let ingestStartedAtMs = 0;
+let ingestTotalPages = null;
+let ingestProcessedPages = new Set();
 
 /**
  * Emite logs a la GUI emulando terminal nativa de consola para UX.
@@ -35,6 +38,62 @@ function stopIngestHeartbeat() {
         window.clearInterval(ingestHeartbeatTimer);
         ingestHeartbeatTimer = null;
     }
+    ingestStartedAtMs = 0;
+    ingestTotalPages = null;
+    ingestProcessedPages = new Set();
+}
+
+function formatElapsedMMSS(elapsedMs) {
+    const totalSec = Math.max(0, Math.floor(elapsedMs / 1000));
+    const minutes = Math.floor(totalSec / 60);
+    const seconds = totalSec % 60;
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatDurationMMSS(totalSeconds) {
+    const safe = Math.max(0, Math.floor(totalSeconds));
+    const minutes = Math.floor(safe / 60);
+    const seconds = safe % 60;
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function updateIngestProgressFromServerLog(rawMessage) {
+    const msg = `${rawMessage || ""}`;
+
+    // Ejemplo: "Render base completado. Total de páginas detectadas: 18."
+    const totalMatch = msg.match(/Total de p[aá]ginas detectadas:\s*(\d+)/i);
+    if (totalMatch) {
+        ingestTotalPages = parseInt(totalMatch[1], 10);
+    }
+
+    // Marcador de cierre de página (ocurre una vez por página):
+    // "Página 7: empaquetada para respuesta con 13 bloques."
+    const packedMatch = msg.match(/P[aá]gina\s+(\d+):\s+empaquetada\s+para\s+respuesta/i);
+    if (packedMatch) {
+        ingestProcessedPages.add(parseInt(packedMatch[1], 10));
+    }
+}
+
+function startIngestHeartbeat() {
+    stopIngestHeartbeat();
+    ingestStartedAtMs = Date.now();
+    ingestHeartbeatTimer = window.setInterval(() => {
+        const elapsed = formatElapsedMMSS(Date.now() - ingestStartedAtMs);
+        const processed = ingestProcessedPages.size;
+        const total = ingestTotalPages;
+
+        if (total && processed > 0 && processed <= total) {
+            const elapsedSec = (Date.now() - ingestStartedAtMs) / 1000;
+            const avgSecPerPage = elapsedSec / processed;
+            const remaining = Math.max(0, total - processed);
+            const etaSec = remaining * avgSecPerPage;
+            terminalPrint(
+                `⏳ Procesando... ${elapsed} transcurridos · ${processed}/${total} páginas · ETA ~${formatDurationMMSS(etaSec)}`
+            );
+        } else {
+            terminalPrint(`⏳ Procesando... ${elapsed} transcurridos.`);
+        }
+    }, 8000);
 }
 
 function closeServerEventSource() {
@@ -51,6 +110,7 @@ function connectToServerLogs(docId) {
     
     serverEventSource.onmessage = (event) => {
         if (event.data) {
+            updateIngestProgressFromServerLog(event.data);
             terminalPrint(event.data);
         }
     };
@@ -106,14 +166,23 @@ if (fileInput) {
  * @param {File} pdfBlob El archivo del usuario.
  */
 async function ingestPdfAndTriggerOcr(pdfBlob) {
+    const clientDocId = (window.crypto && window.crypto.randomUUID)
+        ? window.crypto.randomUUID()
+        : `doc-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+
+    // Abrir SSE ANTES del POST para ver progreso en tiempo real desde la primera página.
+    connectToServerLogs(clientDocId);
+
     const formData = new FormData();
     formData.append("file", pdfBlob);
+    formData.append("doc_id", clientDocId);
 
     // Ocultar area de Drag para dar protagonismo a la Terminal si se prefiere
     // document.getElementById("upload-panel").hidden = true; 
     
     terminalPrint(`Iniciando Uplink. Transfiriendo archivo '${pdfBlob.name}' (Size: ${(pdfBlob.size / 1024 / 1024).toFixed(2)} MB)...`);
     terminalPrint("Red conectada. Esperando a motor Offline OCR (Modo Turbo GPU si está disponible)...");
+    startIngestHeartbeat();
 
     try {
         const response = await fetch(`${API_BASE_URL}/process`, {
@@ -127,20 +196,9 @@ async function ingestPdfAndTriggerOcr(pdfBlob) {
         }
 
         const businessLogicResponse = await response.json();
-        
-        // Conectar a SSE ahora que tenemos el doc_id
-        if (businessLogicResponse.doc_id) {
-            connectToServerLogs(businessLogicResponse.doc_id);
-        }
-        
         terminalPrint(`¡ÉXITO TOTAL! ${businessLogicResponse.total_pages} páginas recibidas desde el microservicio backend.`);
-        if (Array.isArray(businessLogicResponse.pages)) {
-            businessLogicResponse.pages.forEach((page, index) => {
-                const pageMode = page.has_native_text ? "texto nativo" : "OCR";
-                terminalPrint(`Página ${index + 1}/${businessLogicResponse.total_pages}: ${pageMode}, ${page.blocks.length} bloques listos.`);
-            });
-        }
         terminalPrint(`Módulos cargados exitosamente. Construyendo UI HTML5 Canvas e instanciando motor Exportador...`);
+        stopIngestHeartbeat();
         
         const workspaceGate = document.getElementById("editor-workspace");
         if (workspaceGate) workspaceGate.hidden = false;
@@ -159,6 +217,7 @@ async function ingestPdfAndTriggerOcr(pdfBlob) {
             });
 
     } catch (e) {
+        stopIngestHeartbeat();
         closeServerEventSource();
         terminalPrint(`❌ ABORTO DE OPERACIÓN HTTP: ${e.message}`);
     }

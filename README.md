@@ -44,11 +44,30 @@ NotebookLM PDF (imagen) → OCR Local → Editor Visual → PowerPoint Editable
 | ⚡ **Aceleración GPU** | Soporte CUDA para tarjetas NVIDIA. El OCR pasa de ~40s a ~4s por página. |
 | 🎨 **Editor Canvas** | Interfaz visual en el navegador. Arrastra, redimensiona y edita cajas de texto. |
 | 🔍 **Multi-selección** | `Ctrl+Click` para seleccionar varios bloques. Igualación de estilos o fusión en uno. |
+| 🗑 **Eliminar bloque en 1 clic** | Papelera en la barra de edición para borrar bloques seleccionados con confirmación. |
 | ↖️ **Alineación de texto** | Control izquierda / centro / derecha en cada bloque. Se exporta a PDF y PPTX. |
-| ✨ **IA Generativa** | Función opcional de limpieza de fondos con Gemini (requiere API Key). |
+| 🧽 **Limpieza de fondo híbrida** | Modo `Auto / Local (OpenCV) / Cloud (AI Studio)` para eliminar texto de fondo. |
+| 🖥 **Consola de progreso real** | Streaming por página en vivo con heartbeat y ETA estimada. |
 | 📥 **Exportación múltiple** | Descarga simultánea en PowerPoint (.pptx), PDF (vectorial) y Markdown (.md). |
 | ↩️ **Undo / Redo** | Historial de 50 estados. Ctrl+Z / Ctrl+Y en el editor. |
 | 🔒 **Privacidad total** | Los documentos nunca salen de tu máquina (salvo uso voluntario de IA). |
+
+---
+
+## Novedades de la versión 1.4.0
+
+- 🧩 **Instalación simplificada para Windows**:
+   - `instalar_y_ejecutar.cmd`: instalador 1 clic (detecta Python, crea venv, instala deps y arranca todo).
+   - `ejecutar_dbv.cmd`: arranque diario rápido.
+   - Compatibilidad total: los `.bat` siguen funcionando como alias.
+- 🧭 **Asistencia cuando falta Python**: el instalador abre automáticamente la página oficial de Python 3.12 y muestra pasos guiados.
+- 🧽 **Limpieza de fondo local con OpenCV Inpainting** (sin API key) para fondos complejos (gradientes, texturas suaves).
+- ☁️ **Modo de limpieza seleccionable**: `Auto / Local / Cloud` desde la barra superior.
+- 📡 **Terminal asíncrona en tiempo real**: conexión SSE desde el inicio del proceso, sin volcado tardío al final.
+- ⏱ **Heartbeat con tiempo transcurrido y ETA**: muestra progreso estimado por páginas ya procesadas.
+- ✍️ **Mejora UX en edición inline**: corrección de pérdida de foco al interactuar con la barra de edición.
+- 🗑 **Botón de eliminar bloque** en la barra de edición visual.
+- 🧱 **Rediseño horizontal de la zona IA** para reducir altura y mejorar legibilidad de controles.
 
 ---
 
@@ -94,6 +113,38 @@ NotebookLM PDF (imagen) → OCR Local → Editor Visual → PowerPoint Editable
 > 🧭 **¿No eres informático/a?** Sigue la guía completa paso a paso:
 > - Windows: [Guía para No Informáticos (Windows)](docs/GUIA_NO_INFORMATICOS.md)
 > - macOS: [Guía para No Informáticos (macOS)](docs/GUIA_MAC_NO_INFORMATICOS.md)
+
+### Opción recomendada (Windows, 1 clic)
+
+1. Descarga o clona el proyecto.
+2. Haz doble clic en:
+
+```cmd
+instalar_y_ejecutar.cmd
+```
+
+Este script:
+- detecta Python,
+- crea el entorno virtual,
+- instala dependencias,
+- arranca backend y frontend,
+- abre el navegador.
+
+Uso diario posterior:
+
+```cmd
+ejecutar_dbv.cmd
+```
+
+Para detener servicios:
+
+```cmd
+stop_dev.cmd
+```
+
+> Compatibilidad: también puedes seguir usando `start_dev.bat` y `stop_dev.bat`.
+
+### Opción manual (avanzada)
 
 ### 1. Clonar el repositorio
 
@@ -141,7 +192,7 @@ Nombre de la GPU: NVIDIA GeForce RTX XXXX
 
 Desde la raíz del proyecto:
 ```cmd
-start_dev.bat
+start_dev.cmd
 ```
 
 Esto lanza automáticamente dos servidores:
@@ -149,6 +200,39 @@ Esto lanza automáticamente dos servidores:
 - **Interfaz Web:** `http://localhost:5500`
 
 Abre `http://localhost:5500` en tu navegador y ¡listo!
+
+### 6. Actualizar (usuarios expertos)
+
+Si ya tienes DBV PDF2Deck instalado y quieres traer la última versión:
+
+1. Detén servicios si están activos:
+
+```cmd
+stop_dev.cmd
+```
+
+2. Desde la raíz del proyecto, actualiza el código:
+
+```bash
+git pull --ff-only
+```
+
+3. Actualiza dependencias del backend en el entorno virtual:
+
+```cmd
+cd backend
+venv\Scripts\activate
+pip install -r requirements.txt
+cd ..
+```
+
+4. Arranca de nuevo:
+
+```cmd
+start_dev.cmd
+```
+
+Si has hecho cambios locales propios y `git pull` falla, guarda tu trabajo (commit o stash) antes de actualizar.
 
 ---
 
@@ -177,12 +261,18 @@ Pulsa el botón **"📥 Descargar Selección"** para generar solo los formatos m
 
 Cuando el PDF original contiene hipervínculos ocultos, la exportación Markdown intenta preservarlos en formato `[texto](url)`.
 
-### IA Generativa (Opcional)
+### IA Generativa y Limpieza Local (Opcional)
 
-Para usar la función de limpieza de fondos con IA:
+El botón **✨ Limpiar Fondo** soporta tres modos:
+
+- **Auto**: usa Cloud si hay API key; si no, usa Local.
+- **Local (OpenCV)**: inpainting offline, no requiere API key.
+- **Cloud (AI Studio)**: limpieza con IA generativa (requiere API key).
+
+Para usar modo Cloud:
 1. Obtén una API Key gratuita en [Google AI Studio](https://aistudio.google.com/).
 2. Pégala en el campo **"Google AI Studio API Key"** de la barra superior.
-3. Haz clic en **"✨ Limpiar Fondo"** para procesar la página actual.
+3. Selecciona **Cloud** (o deja **Auto**) y pulsa **"✨ Limpiar Fondo"**.
 
 > La API Key se guarda localmente en tu navegador (`localStorage`). Nunca se envía a nuestros servidores.
 
@@ -213,8 +303,12 @@ dbv-pdf2deck/
 ├── docs/                       # Documentación pública
 │   ├── instalar_cuda.md        # Guía de instalación GPU
 │   └── STYLEGUIDE.md           # Guía de estilo de código
-├── start_dev.bat               # Arranque rápido (Windows)
-└── stop_dev.bat                # Detención de servidores
+├── instalar_y_ejecutar.cmd     # Instalador 1 clic (Windows)
+├── ejecutar_dbv.cmd            # Arranque rápido diario
+├── start_dev.cmd               # Entrada principal compatible
+├── stop_dev.cmd                # Detención de servicios
+├── start_dev.bat               # Alias legacy -> .cmd
+└── stop_dev.bat                # Alias legacy -> .cmd
 ```
 
 ---
@@ -271,5 +365,6 @@ Este proyecto fue construido mediante un **flujo de trabajo de codificación asi
 | **[Antigravity](https://antigravity.google)** · *by Google DeepMind* | Agente principal de codificación. Backend, frontend, motor de exportación y arquitectura general. |
 | **[Gemini](https://gemini.google.com)** · *by Google* | Motor de IA generativa que impulsa la función opcional de limpieza de fondos. |
 | **[Claude](https://claude.ai)** · *by Anthropic* | Agente secundario de codificación. Configuración de GPU, depuración y documentación. |
+| **GPT Codex** · *by OpenAI* | Programación en pareja para implementación, refactor, depuración y cierre de funcionalidades de la versión 1.4.0. |
 
 > *"La visión fue humana. El código fue una conversación."*

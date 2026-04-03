@@ -13,6 +13,35 @@ y el proyecto adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ---
 
+## [1.4.0] — 2026-04-03
+
+### Añadido en 1.4.0
+
+- **Instalador 1 clic para Windows**: `instalar_y_ejecutar.cmd`.
+- **Lanzador diario simplificado**: `ejecutar_dbv.cmd`.
+- **Scripts `.cmd` oficiales**: `start_dev.cmd`, `stop_dev.cmd`.
+- **Aliases legacy `.bat`** que delegan en `.cmd` para compatibilidad retroactiva.
+- **Limpieza local de fondo con OpenCV Inpainting** (`/api/v1/clean-background-local`) sin API key.
+- **Selector de modo de limpieza** en UI: `Auto / Local (OpenCV) / Cloud (AI Studio)`.
+- **Indicador de modo activo** en la barra de inteligencia artificial.
+- **Botón de eliminar bloque** en la barra de edición visual (`🗑`).
+- **Consola asíncrona con ETA**: heartbeat con tiempo transcurrido y estimación restante basada en páginas procesadas.
+
+### Cambiado en 1.4.0
+
+- El flujo de logs SSE se conecta **antes** de `POST /process` para mostrar progreso en tiempo real desde el inicio.
+- `POST /process` acepta `doc_id` suministrado por frontend para alinear procesamiento y stream de logs.
+- Rediseño de la sección **Inteligencia Artificial** en el toolbar superior para aprovechar mejor el ancho horizontal.
+- El botón `✨ Limpiar Fondo` ahora respeta estrictamente el modo elegido (Auto/Local/Cloud).
+
+### Corregido en 1.4.0
+
+- Se elimina el efecto de "volcado final" de logs de páginas al terminar: ahora el progreso llega incrementalmente.
+- Corregido cierre prematuro del editor inline al interactuar con su barra de controles (foco/blur).
+- Mensajes de error más claros cuando falta OpenCV en modo local.
+
+---
+
 ## [1.3.0] — 2026-04-02
 
 ### Añadido en 1.3.0
@@ -156,7 +185,8 @@ exportación a PowerPoint y PDF, e interfaz Canvas interactiva en el navegador.
 - **Corregido** — corrección de errores.
 - **Seguridad** — correcciones de vulnerabilidades.
 
-[Sin publicar]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.3.0...HEAD
+[Sin publicar]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.0.0...v1.1.0
