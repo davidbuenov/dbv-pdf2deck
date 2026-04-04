@@ -13,6 +13,32 @@ y el proyecto adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ---
 
+## [1.5.0] — 2026-04-04
+
+### Añadido en 1.5.0
+
+- **Entrada flexible de documentos visuales** en `POST /api/v1/process`: además de `.pdf`, ahora soporta `.png`, `.jpg`, `.jpeg` y `.webp`.
+- **Procesamiento de imagen como documento de una página** para reutilizar el mismo pipeline de OCR, edición Canvas y exportación.
+- **Corrección de orientación EXIF** y normalización a RGB para imágenes de cámara/móvil antes del OCR.
+- **Soporte de configuración por `.env`** centralizado en backend con carga automática de `.env` en raíz o `backend/.env`.
+- **Plantilla de configuración** `.env.example` para ajustes rápidos por entorno.
+
+### Cambiado en 1.5.0
+
+- Se refuerza el posicionamiento del producto para **infografías generadas por IA**, donde son frecuentes errores tipográficos y de maquetación.
+- La validación del frontend en carga/drag&drop ahora acepta formatos de imagen además de PDF.
+- El texto de la interfaz de carga comunica explícitamente soporte para documentos e imágenes.
+
+### Corregido en 1.5.0
+
+- **Modo no invasivo de estabilidad**: límites de tamaño para evitar bloqueos por archivos excesivos sin reescalado automático.
+  - Límite de subida por archivo (`DBV_MAX_UPLOAD_MB`, por defecto 20 MB).
+  - Límite de lado por imagen/página (`DBV_MAX_IMAGE_SIDE_PX`, por defecto 8000 px).
+  - Límite de píxeles totales (`DBV_MAX_IMAGE_TOTAL_PIXELS`, por defecto 25.000.000 px).
+- Mensajes de rechazo más claros cuando un archivo excede límites de tamaño o resolución.
+
+---
+
 ## [1.4.0] — 2026-04-03
 
 ### Añadido en 1.4.0
@@ -185,7 +211,8 @@ exportación a PowerPoint y PDF, e interfaz Canvas interactiva en el navegador.
 - **Corregido** — corrección de errores.
 - **Seguridad** — correcciones de vulnerabilidades.
 
-[Sin publicar]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.4.0...HEAD
+[Sin publicar]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/davidbuenov/dbv-pdf2deck/compare/v1.1.0...v1.2.0

@@ -9,6 +9,13 @@
  */
 
 const API_BASE_URL = "http://localhost:8000/api/v1";
+const SUPPORTED_UPLOAD_MIME = new Set([
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+]);
+const SUPPORTED_UPLOAD_EXT = new Set([".pdf", ".png", ".jpg", ".jpeg", ".webp"]);
 
 const dropzone = document.getElementById("dropzone");
 const fileInput = document.getElementById("pdf-upload");
@@ -125,6 +132,15 @@ function connectToServerLogs(docId) {
     };
 }
 
+function isSupportedUpload(file) {
+    const mime = (file.type || "").toLowerCase();
+    if (SUPPORTED_UPLOAD_MIME.has(mime)) return true;
+
+    const name = (file.name || "").toLowerCase();
+    const ext = name.includes(".") ? `.${name.split(".").pop()}` : "";
+    return SUPPORTED_UPLOAD_EXT.has(ext);
+}
+
 // ---------- INTERFAZ DRAG & DROP ----------
 if (dropzone) {
     dropzone.onclick = () => fileInput && fileInput.click();
@@ -143,10 +159,10 @@ if (dropzone) {
         dropzone.classList.remove("drag-over");
         if (e.dataTransfer && e.dataTransfer.files.length > 0) {
             const file = e.dataTransfer.files[0];
-            if (file.type === "application/pdf") {
+            if (isSupportedUpload(file)) {
                 ingestPdfAndTriggerOcr(file);
             } else {
-                terminalPrint("❌ Error fatal: Sólo se admiten documentos .PDF");
+                terminalPrint("❌ Error fatal: Sólo se admiten .PDF, .PNG, .JPG/.JPEG o .WEBP");
             }
         }
     };

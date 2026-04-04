@@ -29,15 +29,15 @@
         <section aria-labelledby="upload-heading">
         <!-- Panel interactivo de Carga Modificado (Drag & Drop + Consola) -->
         <section id="upload-panel" aria-labelledby="upload-heading">
-            <h2 id="upload-heading">Carga tu PDF</h2>
-            <p>Arrastra una exportación de NotebookLM u otro PDF de solo imagen. Todo el procesamiento ocurre <strong>100% offline</strong> en tu ordenador.</p>
+            <h2 id="upload-heading">Carga tu documento o imagen</h2>
+            <p>Arrastra una exportación de NotebookLM, una transparencia o una infografía (PDF/PNG/JPG/WEBP). Todo el procesamiento ocurre <strong>100% offline</strong> en tu ordenador.</p>
             
-            <div id="dropzone" class="dropzone-area" role="button" tabindex="0" aria-label="Área para soltar archivos PDF">
-                <input type="file" id="pdf-upload" accept="application/pdf" hidden>
+            <div id="dropzone" class="dropzone-area" role="button" tabindex="0" aria-label="Área para soltar archivos PDF o imágenes">
+                <input type="file" id="pdf-upload" accept="application/pdf,image/png,image/jpeg,image/webp" hidden>
                 <div class="dropzone-content">
                     <span class="icon" style="font-size: 3rem;">📄</span>
-                    <h3 style="margin-top: 1rem; color: var(--color-primary);">Arrastra tu PDF aquí</h3>
-                    <p style="color: #4a5568;">o haz clic para explorar tus archivos &mdash; soporta cualquier PDF, incluidas exportaciones de NotebookLM</p>
+                    <h3 style="margin-top: 1rem; color: var(--color-primary);">Arrastra tu archivo aquí</h3>
+                    <p style="color: #4a5568;">o haz clic para explorar tus archivos &mdash; soporta PDF, PNG, JPG/JPEG y WEBP</p>
                 </div>
             </div>
             

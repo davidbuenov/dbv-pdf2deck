@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from fastapi.background import BackgroundTasks
 from pydantic import BaseModel
 
-from core.pdf_renderer import process_pdf_file, PDFDocumentContext
+from core.pdf_renderer import process_document_file, PDFDocumentContext
 import io
 import base64
 import shutil
@@ -26,6 +26,7 @@ from core.ocr_engine import analyze_image, OCRBlock
 from core.exporter_engine import generate_export_zip
 from core.ai_cleaner import clean_image_with_ai, clean_image_with_inpaint
 from core.result import Ok, Err
+from core.settings import MAX_UPLOAD_MB, MAX_UPLOAD_BYTES
 
 # Enrutador asilado para versionar la API elegantemente
 router = APIRouter(prefix="/api/v1", tags=["document-processor"])
@@ -124,7 +125,7 @@ async def stream_process_logs(doc_id: str):
 @router.post("/process", response_model=ProcessResponse)
 def process_document(file: UploadFile = File(...), doc_id: str | None = Form(None)) -> ProcessResponse:
     """
-    Ingesta un archivo PDF del formulario cliente, lo guarda temporalmente mediante
+    Ingesta un archivo de documento (PDF o imagen) del formulario cliente, lo guarda temporalmente mediante
     context managers de Python, lo rasteriza resolviendo las páginas como imágenes
     y ejecuta inteligencia OCR únicamente en aquellas que carecen de texto nativo.
     
@@ -136,20 +137,35 @@ def process_document(file: UploadFile = File(...), doc_id: str | None = Form(Non
         bboxes (bloques calculados de texto).
         
     Raises:
-        HTTPException: Errores insalvables 400 (Mal formato) y 500 (Quiebre lectura PyMuPDF).
+        HTTPException: Errores insalvables 400 (Mal formato) y 500 (Quiebre lectura/transformación).
     """
     response: ProcessResponse
+    accepted_extensions = {".pdf", ".png", ".jpg", ".jpeg", ".webp"}
+    upload_name = (file.filename or "").strip()
+    upload_suffix = Path(upload_name).suffix.lower()
+    is_pdf_upload = upload_suffix == ".pdf"
     
     # 1. Guard clause de extensión validando la entrada plana sin pirámide de ifs
-    if not file.filename or not file.filename.lower().endswith('.pdf'):
+    if not upload_name or upload_suffix not in accepted_extensions:
         raise HTTPException(
             status_code=400, 
-            detail="Petición errónea: El archivo proveído debe poseer sin excepción formato .pdf"
+            detail="Petición errónea: El archivo debe ser .pdf, .png, .jpg, .jpeg o .webp"
         )
         
+    file_bytes = file.file.read()
+    upload_size_bytes = len(file_bytes)
+    if upload_size_bytes > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Archivo demasiado grande: {upload_size_bytes / (1024 * 1024):.1f} MB. "
+                f"Máximo permitido: {MAX_UPLOAD_MB} MB."
+            )
+        )
+
     # Escritura atómica a FS local. Se destruirá en el bloque `finally` para evitar fugas.
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-        tmp_file.write(file.file.read())
+    with tempfile.NamedTemporaryFile(delete=False, suffix=upload_suffix) as tmp_file:
+        tmp_file.write(file_bytes)
         tmp_path = Path(tmp_file.name)
         
     # Permitir que el frontend suministre doc_id para abrir SSE antes del POST /process.
@@ -160,16 +176,17 @@ def process_document(file: UploadFile = File(...), doc_id: str | None = Form(Non
     if doc_id not in LOG_QUEUES:
         LOG_QUEUES[doc_id] = asyncio.Queue(maxsize=200)
 
-    persisted_pdf_path = DOCS_DIR / f"{doc_id}.pdf"
+    persisted_doc_path = DOCS_DIR / f"{doc_id}{upload_suffix}"
 
     try:
-        shutil.copy2(tmp_path, persisted_pdf_path)
-        DOCUMENT_STORE[doc_id] = persisted_pdf_path
-        _log_processing_step(doc_id, f"Documento persistido temporalmente como '{persisted_pdf_path.name}'.")
+        if is_pdf_upload:
+            shutil.copy2(tmp_path, persisted_doc_path)
+            DOCUMENT_STORE[doc_id] = persisted_doc_path
+        _log_processing_step(doc_id, f"Documento persistido temporalmente como '{persisted_doc_path.name}'.")
         _log_processing_step(doc_id, "Iniciando inspección estructural y renderizado de páginas...")
 
         # Procesamos con resolución 100DPI para no asfixiar a localizadores pesados en el MVP
-        render_result = process_pdf_file(tmp_path, dpi=100)
+        render_result = process_document_file(tmp_path, dpi=100)
         
         match render_result:
             case Err(msg):
@@ -267,7 +284,7 @@ def process_document(file: UploadFile = File(...), doc_id: str | None = Form(Non
                     _log_processing_step(doc_id, f"Página {human_page_num}: empaquetada para respuesta con {len(blocks_out)} bloques.")
                     
                 response = ProcessResponse(
-                    filename=context.filename,
+                    filename=upload_name,
                     doc_id=doc_id,
                     total_pages=context.total_pages,
                     pages=pages_out

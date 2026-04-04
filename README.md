@@ -1,7 +1,7 @@
 # DBV PDF2Deck 📄➡️📊
 
-> **Convierte PDFs de solo imagen en presentaciones de PowerPoint totalmente editables**  
-> *Converts image-only PDFs (like NotebookLM presentations) into fully editable PowerPoint decks using local OCR and a visual canvas.*
+> **Convierte PDFs e imágenes (incluidas infografías generadas por IA) en presentaciones de PowerPoint totalmente editables**  
+> *Converts image-only PDFs and AI-generated infographics into fully editable PowerPoint decks using local OCR and a visual canvas.*
 
 > Open Source · Sin dependencias de nube · Aceleración GPU opcional
 
@@ -14,15 +14,17 @@
 
 ## ¿Qué es DBV PDF2Deck?
 
-**DBV PDF2Deck** convierte PDFs de solo imagen —como las presentaciones exportadas desde NotebookLM, escáneres o formularios digitalizados— en **diapositivas de PowerPoint totalmente editables**, usando OCR local y un editor visual en el navegador.
+**DBV PDF2Deck** convierte PDFs de solo imagen y archivos visuales (como infografías generadas por IA) en **diapositivas de PowerPoint totalmente editables**, usando OCR local y un editor visual en el navegador.
 
 No necesitas Adobe Acrobat, ni subir tus archivos a ningún servicio en la nube. Todo ocurre **en tu propio ordenador**.
 
 El flujo es sencillo:
-1. **Sube tu PDF** → el sistema detecta automáticamente si tiene texto nativo o solo imagen.
+1. **Sube tu PDF o imagen** (`.pdf`, `.png`, `.jpg/.jpeg`, `.webp`) → el sistema detecta automáticamente si tiene texto nativo o solo imagen.
 2. **El OCR local analiza cada página** y coloca cajas editables sobre el texto detectado.
 3. **Edita el texto directamente** en el navegador con un editor visual tipo Canvas.
 4. **Exporta** el resultado como presentación de PowerPoint (`.pptx`) o PDF modificado.
+
+En la práctica, esto es especialmente útil para **infografías de IA** con fallos frecuentes (erratas, textos cortados, mezcla de idiomas, tamaños incoherentes o títulos mal alineados): puedes corregirlos en minutos y exportar un resultado profesional.
 
 ---
 
@@ -34,6 +36,15 @@ NotebookLM genera presentaciones en PDF que son **solo imágenes**: no puedes se
 NotebookLM PDF (imagen) → OCR Local → Editor Visual → PowerPoint Editable
 ```
 
+## Caso de uso clave: infografías generadas por IA
+
+Las infografías creadas por modelos generativos suelen tener errores visuales y de texto: palabras inventadas, números mal escritos, jerarquías rotas o bloques desalineados. DBV PDF2Deck permite:
+
+1. Cargar la infografía directamente como imagen.
+2. Detectar y editar cada bloque de texto con precisión.
+3. Limpiar el fondo para eliminar texto defectuoso original.
+4. Exportar el resultado final en `.pptx`, `.pdf` o `.md`.
+
 ---
 
 ## Características
@@ -41,6 +52,7 @@ NotebookLM PDF (imagen) → OCR Local → Editor Visual → PowerPoint Editable
 | Característica | Descripción |
 |---|---|
 | 🧠 **OCR local** | Motor EasyOCR (PyTorch) integrado. Sin APIs de pago, sin internet requerido. |
+| 🖼️ **Entrada flexible** | Procesa tanto PDF multipágina como imágenes sueltas (PNG/JPG/WEBP) como página única editable. |
 | ⚡ **Aceleración GPU** | Soporte CUDA para tarjetas NVIDIA. El OCR pasa de ~40s a ~4s por página. |
 | 🎨 **Editor Canvas** | Interfaz visual en el navegador. Arrastra, redimensiona y edita cajas de texto. |
 | 🔍 **Multi-selección** | `Ctrl+Click` para seleccionar varios bloques. Igualación de estilos o fusión en uno. |
@@ -53,6 +65,15 @@ NotebookLM PDF (imagen) → OCR Local → Editor Visual → PowerPoint Editable
 | 🔒 **Privacidad total** | Los documentos nunca salen de tu máquina (salvo uso voluntario de IA). |
 
 ---
+
+## Novedades de la versión 1.4.0
+
+## Novedades de la versión 1.5.0
+
+- 🖼 **Entrada ampliada a imágenes** en el flujo principal (`.png`, `.jpg`, `.jpeg`, `.webp`) además de PDF.
+- ✨ **Enfoque reforzado en infografías de IA**: el flujo está optimizado para corregir erratas y defectos habituales de contenido generado.
+- 🧱 **Protección no invasiva para estabilidad**: límites de tamaño de archivo y resolución para evitar bloqueos por entradas gigantes, sin reescalar automáticamente.
+- ⚙️ **Configuración profesional con `.env`**: límites ajustables por entorno con plantilla `.env.example`.
 
 ## Novedades de la versión 1.4.0
 
@@ -238,9 +259,31 @@ Si has hecho cambios locales propios y `git pull` falla, guarda tu trabajo (comm
 
 ## Uso
 
+### Límites de entrada (modo no invasivo)
+
+Para mantener estabilidad y tiempos de respuesta, el backend aplica límites por defecto:
+
+- Tamaño máximo de archivo: **20 MB**
+- Lado máximo de imagen/página renderizada: **8000 px**
+- Máximo total de píxeles por imagen/página: **25.000.000 px**
+
+Si un archivo excede estos límites, se rechaza con un error claro (sin reescalado automático).
+
+Puedes ajustar estos valores por variables de entorno:
+
+- `DBV_MAX_UPLOAD_MB` (por defecto `20`)
+- `DBV_MAX_IMAGE_SIDE_PX` (por defecto `8000`)
+- `DBV_MAX_IMAGE_TOTAL_PIXELS` (por defecto `25000000`)
+
+Soporte `.env` incluido:
+
+- Copia `.env.example` como `.env`
+- Puedes guardar `.env` en la raíz del proyecto o dentro de `backend/`
+- El backend carga ambos (`backend/.env` y raíz `.env`) sin sobrescribir variables ya definidas en el sistema
+
 ### Editor Visual
 
-1. **Arrastra y suelta** tu PDF en la zona de carga (o haz clic para seleccionarlo).
+1. **Arrastra y suelta** tu PDF o imagen en la zona de carga (o haz clic para seleccionarlo).
 2. Espera a que el OCR procese las páginas (4–40 segundos según GPU/CPU).
 3. Haz clic en cualquier caja de texto para entrar en **edición inline** directamente sobre el bloque.
 4. Usa la barra contextual para cambiar fuente, tamaño, color, fondo, transparencia, **alineación**, **subrayado** e **interlineado**.

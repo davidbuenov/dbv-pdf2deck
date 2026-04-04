@@ -9,13 +9,18 @@ como presencia de texto por página, y renderizar su lienzo a imágenes rasteriz
 """
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import fitz  # PyMuPDF
-from PIL import Image
+from PIL import Image, ImageOps
 import uuid
 
 from .result import Err, Ok, Result
 from .ocr_engine import OCRBlock
+from .settings import MAX_IMAGE_SIDE_PX, MAX_IMAGE_TOTAL_PIXELS
+
+
+SUPPORTED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 def _clean_font_name(raw: str) -> str:
@@ -106,7 +111,8 @@ def process_pdf_file(file_path: Path, dpi: int = 150) -> Result[PDFDocumentConte
                 for page_index in range(total_pages):
                     page: fitz.Page = pdf_document[page_index]
                     
-                    text_content: str = page.get_text()
+                    raw_text_content = page.get_text()
+                    text_content: str = raw_text_content if isinstance(raw_text_content, str) else ""
                     # NotebookLM a veces deja espacios o metadatos vectoriales. Solo saltamos el OCR
                     # si hay más de 20 letras o números sólidos, asegurando que valga la pena no usar OCR.
                     caracteres_puros = re.sub(r'[\W_]+', '', text_content)
@@ -115,6 +121,24 @@ def process_pdf_file(file_path: Path, dpi: int = 150) -> Result[PDFDocumentConte
                     zoom_factor: float = dpi / 72.0
                     matrix = fitz.Matrix(zoom_factor, zoom_factor)
                     pixmap: fitz.Pixmap = page.get_pixmap(matrix=matrix, alpha=False)
+                    pixel_count = int(pixmap.width) * int(pixmap.height)
+                    if int(pixmap.width) > MAX_IMAGE_SIDE_PX or int(pixmap.height) > MAX_IMAGE_SIDE_PX:
+                        resultado = Err(
+                            (
+                                f"La página {page_index + 1} excede el tamaño máximo permitido "
+                                f"({pixmap.width}x{pixmap.height}px). "
+                                f"Límite por lado: {MAX_IMAGE_SIDE_PX}px."
+                            )
+                        )
+                        return resultado
+                    if pixel_count > MAX_IMAGE_TOTAL_PIXELS:
+                        resultado = Err(
+                            (
+                                f"La página {page_index + 1} excede el máximo de píxeles permitidos "
+                                f"({pixel_count:,} px). Límite: {MAX_IMAGE_TOTAL_PIXELS:,} px."
+                            )
+                        )
+                        return resultado
                     
                     native_blocks_list = None
                     if has_native_text:
@@ -131,7 +155,8 @@ def process_pdf_file(file_path: Path, dpi: int = 150) -> Result[PDFDocumentConte
                                 if rect and fill:
                                     shape_rects.append((rect, fill))
                         
-                        raw_data = page.get_text("dict")
+                        raw_data_any = page.get_text("dict")
+                        raw_data: dict[str, Any] = raw_data_any if isinstance(raw_data_any, dict) else {}
                         for b in raw_data.get("blocks", []):
                             if b.get("type", -1) != 0:
                                 continue
@@ -286,3 +311,85 @@ def process_pdf_file(file_path: Path, dpi: int = 150) -> Result[PDFDocumentConte
             resultado = Err(f"Fallo inesperado del sistema al transformar el PDF: {e!s}")
 
     return resultado
+
+
+def process_image_file(file_path: Path, dpi: int = 150) -> Result[PDFDocumentContext]:
+    """
+    Procesa una imagen individual como si fuera un documento de una sola página,
+    para reutilizar el mismo pipeline OCR/Canvas/export sin bifurcar lógica.
+
+    Args:
+        file_path (Path): Ruta física de la imagen a procesar.
+        dpi (int, opcional): Resolución de referencia para convertir píxeles a puntos.
+
+    Returns:
+        Result[PDFDocumentContext]: Contexto de documento con una única página renderizada.
+    """
+    resultado: Result[PDFDocumentContext]
+
+    if not file_path.exists():
+        resultado = Err(f"El archivo especificado no existe o la ruta es inválida: {file_path}")
+    elif not file_path.is_file() or file_path.suffix.lower() not in SUPPORTED_IMAGE_EXTENSIONS:
+        resultado = Err(f"La ruta no apunta a una imagen soportada válida: {file_path}")
+    else:
+        try:
+            with Image.open(file_path) as raw_image:
+                # Respeta orientación embebida de cámara/móvil y normaliza modo para OCR estable.
+                normalized = ImageOps.exif_transpose(raw_image)
+                page_image = normalized.convert("RGB")
+
+            pixel_count = int(page_image.width) * int(page_image.height)
+            if int(page_image.width) > MAX_IMAGE_SIDE_PX or int(page_image.height) > MAX_IMAGE_SIDE_PX:
+                resultado = Err(
+                    (
+                        f"La imagen excede el tamaño máximo permitido "
+                        f"({page_image.width}x{page_image.height}px). "
+                        f"Límite por lado: {MAX_IMAGE_SIDE_PX}px."
+                    )
+                )
+                return resultado
+            if pixel_count > MAX_IMAGE_TOTAL_PIXELS:
+                resultado = Err(
+                    (
+                        f"La imagen excede el máximo de píxeles permitidos "
+                        f"({pixel_count:,} px). Límite: {MAX_IMAGE_TOTAL_PIXELS:,} px."
+                    )
+                )
+                return resultado
+
+            page_width_pt = float(page_image.width) * 72.0 / float(max(1, dpi))
+            page_height_pt = float(page_image.height) * 72.0 / float(max(1, dpi))
+
+            page = PageRender(
+                page_num=0,
+                image=page_image,
+                has_native_text=False,
+                native_blocks=None,
+                page_width_pt=page_width_pt,
+                page_height_pt=page_height_pt,
+                render_width_px=float(page_image.width),
+                render_height_px=float(page_image.height)
+            )
+
+            context = PDFDocumentContext(
+                filename=file_path.name,
+                total_pages=1,
+                pages=[page]
+            )
+            resultado = Ok(context)
+        except Exception as e:
+            resultado = Err(f"Fallo inesperado del sistema al transformar la imagen: {e!s}")
+
+    return resultado
+
+
+def process_document_file(file_path: Path, dpi: int = 150) -> Result[PDFDocumentContext]:
+    """
+    Enrutador unificado para procesar PDF multi-página o imagen de página única.
+    """
+    suffix = file_path.suffix.lower()
+    if suffix == ".pdf":
+        return process_pdf_file(file_path, dpi=dpi)
+    if suffix in SUPPORTED_IMAGE_EXTENSIONS:
+        return process_image_file(file_path, dpi=dpi)
+    return Err(f"Formato no soportado para procesamiento: {file_path.suffix}")
