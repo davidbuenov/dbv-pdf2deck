@@ -85,7 +85,7 @@ git clone https://github.com/davidbuenov/dbv-pdf2deck.git
 ### 1) Descargar Python 3.12
 
 1. Abre esta página:
-   - https://www.python.org/downloads/release/python-3120/
+   - https://www.python.org/downloads/release/python-31210/
 2. Descarga el instalador de Windows 64-bit.
 
 ### 2) Instalar Python correctamente
