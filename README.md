@@ -121,7 +121,7 @@ Las infografías creadas por modelos generativos suelen tener errores visuales y
 ## Requisitos del Sistema
 
 - **Sistema operativo:** Windows 10/11 (64-bit)
-- **Python:** 3.12.x (recomendado) · [Descargar](https://www.python.org/downloads/release/python-3120/)
+- **Python:** 3.12.x (recomendado) · [Descargar](https://www.python.org/downloads/release/python-31210/)
 - **Navegador:** Chrome, Edge o Firefox moderno
 - **GPU (opcional):** Tarjeta NVIDIA con soporte CUDA 12.1 para aceleración
 
