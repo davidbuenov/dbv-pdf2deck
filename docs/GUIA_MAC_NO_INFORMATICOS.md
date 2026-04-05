@@ -101,7 +101,7 @@ python3.12 --version
 
 Opción sencilla:
 
-1. Abre https://www.python.org/downloads/release/python-3120/
+1. Abre https://www.python.org/downloads/release/python-31210/
 2. Descarga el instalador para macOS.
 3. Abre el instalador y sigue los pasos por defecto.
 
