@@ -11,6 +11,14 @@ y el proyecto adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 > Los cambios en desarrollo aparecerán aquí antes de ser publicados.
 
+### Añadido en Sin publicar
+
+- Se añade una sección destacada de **videotutoriales oficiales de YouTube** en `README.md`, con enlace a la playlist y a cada video individual (instalación, NotebookLM, NotebookLM con fondos complejos e infografías).
+- Se reorganizan los enlaces de videos del `README.md` en **formato tabla** para mejorar visibilidad y consulta rápida.
+- Se actualizan las tablas de videos del `README.md` con **títulos oficiales de cada video** y enlaces clicables (`Ver video` / `Ver playlist`).
+- Se agrega una subsección de **casos de uso en video** dentro de `README.md` (sección Uso) para acceso directo a los tutoriales prácticos.
+- Se incorpora el **video directo de instalación en Windows** dentro de la guía para no informáticos (`docs/GUIA_NO_INFORMATICOS.md`).
+
 ---
 
 ## [1.5.0] — 2026-04-04

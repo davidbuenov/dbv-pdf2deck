@@ -110,6 +110,11 @@ py -3.12 --version
 
 ## Primera puesta en marcha (recomendada: 1 clic)
 
+Si prefieres seguirlo en video mientras lo haces, puedes usar este tutorial oficial:
+
+- Instalación en Windows (paso a paso):
+   https://www.youtube.com/watch?v=ZCRq3n3ygXw&list=PLnNbmcjjevxvysGvmr0qEV505IoHWxo_p&index=2
+
 ### 1) Entrar en la carpeta del proyecto
 
 Si usaste ZIP:

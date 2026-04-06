@@ -129,6 +129,20 @@ Las infografías creadas por modelos generativos suelen tener errores visuales y
 
 ---
 
+## 🎬 Videotutoriales Oficiales (YouTube)
+
+Si prefieres aprender viendo el proceso paso a paso, tienes una lista oficial con demostraciones reales:
+
+| Tipo | Contenido | Enlace |
+|---|---|---|
+| Playlist | Lista oficial de DBV PDF2Deck | [Ver playlist](https://www.youtube.com/playlist?list=PLnNbmcjjevxvysGvmr0qEV505IoHWxo_p) |
+| #1 | DBV PDF2Deck: Instalación paso a paso para editar PDFs de NotebookLM | [Ver video](https://www.youtube.com/watch?v=ZCRq3n3ygXw&list=PLnNbmcjjevxvysGvmr0qEV505IoHWxo_p&index=2) |
+| #2 | DBV PDF2Deck: Convierte PDFs de NotebookLM en PowerPoint (Guía de Uso) | [Ver video](https://www.youtube.com/watch?v=5ct7S_8XMw0&list=PLnNbmcjjevxvysGvmr0qEV505IoHWxo_p&index=3) |
+| #3 | DBV PDF2Deck: Limpia fondos complejos con IA (Gemini) y OpenCV (Local) | [Ver video](https://www.youtube.com/watch?v=3hxGlBWxp2Y&list=PLnNbmcjjevxvysGvmr0qEV505IoHWxo_p&index=4) |
+| #4 | DBV PDF2Deck: Cómo editar y corregir texto en Infografías de IA (Ejemplo Nanobanana) | [Ver video](https://www.youtube.com/watch?v=vGHM6eGI1VY&list=PLnNbmcjjevxvysGvmr0qEV505IoHWxo_p&index=5) |
+
+---
+
 ## Instalación y Arranque
 
 > 🧭 **¿No eres informático/a?** Sigue la guía completa paso a paso:
@@ -258,6 +272,16 @@ Si has hecho cambios locales propios y `git pull` falla, guarda tu trabajo (comm
 ---
 
 ## Uso
+
+### Casos de uso en video
+
+Si quieres ver el flujo real antes de probarlo, estos videos muestran escenarios prácticos:
+
+| Caso práctico | Video |
+|---|---|
+| DBV PDF2Deck: Convierte PDFs de NotebookLM en PowerPoint (Guía de Uso) | [Ver video](https://www.youtube.com/watch?v=5ct7S_8XMw0&list=PLnNbmcjjevxvysGvmr0qEV505IoHWxo_p&index=3) |
+| DBV PDF2Deck: Limpia fondos complejos con IA (Gemini) y OpenCV (Local) | [Ver video](https://www.youtube.com/watch?v=3hxGlBWxp2Y&list=PLnNbmcjjevxvysGvmr0qEV505IoHWxo_p&index=4) |
+| DBV PDF2Deck: Cómo editar y corregir texto en Infografías de IA (Ejemplo Nanobanana) | [Ver video](https://www.youtube.com/watch?v=vGHM6eGI1VY&list=PLnNbmcjjevxvysGvmr0qEV505IoHWxo_p&index=5) |
 
 ### Límites de entrada (modo no invasivo)
 
