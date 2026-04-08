@@ -2,76 +2,34 @@
 setlocal enableextensions
 cd /d "%~dp0"
 
-echo ========================================================
-echo DBV PDF2Deck - Instalador 1 clic (Windows) v1.5
-echo ========================================================
-echo [1/5] Detectando Python...
-set "PY_CMD="
-set "PY_DESC="
+set "ENSURE_INSTALL=0"
+if /i "%~1"=="--ensure-install" set "ENSURE_INSTALL=1"
 
-rem --- Priorizar Python Launcher fijado a 3.12 ---
-py -3.12 -c "import sys" >nul 2>nul
-if not errorlevel 1 (
-    set "PY_CMD=py -3.12"
-    set "PY_DESC=py -3.12"
-)
-
-rem --- Si no hay launcher, buscar un python.exe que sea exactamente 3.12 ---
-if not defined PY_CMD (
-    for /f "delims=" %%i in ('where python 2^>nul') do (
-        "%%~fi" -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 12) else 1)" >nul 2>nul
-        if not errorlevel 1 (
-            set "PY_CMD=\"%%~fi\""
-            set "PY_DESC=%%~fi"
-            goto :python_found
-        )
+if not exist "backend\venv\Scripts\python.exe" (
+    if "%ENSURE_INSTALL%"=="1" (
+        call "%~dp0instalar_y_ejecutar.cmd"
+        exit /b %errorlevel%
     )
-)
-
-:python_found
-if not defined PY_CMD (
-    echo.
-    echo [ERROR] No se encontro Python 3.12 utilizable en este equipo.
-    echo Este proyecto requiere Python 3.12. Python 3.13 no es compatible.
-    echo Asegurate de que Python 3.12 esta instalado y que el comando ^`py -3.12^` funciona.
+    echo [ERROR] No existe entorno virtual en backend\venv
+    echo Ejecuta primero: instalar_y_ejecutar.cmd
     pause
     exit /b 1
 )
 
-echo [OK] Usando: %PY_DESC%
+echo ========================================================
+echo DBV PDF2Deck - Arranque rapido
+echo ========================================================
 
-echo [2/5] Preparando entorno virtual...
-cd /d "%~dp0backend"
-if not exist "venv\Scripts\python.exe" (
-    call %PY_CMD% -m venv venv
-    if errorlevel 1 goto :fail
-) else (
-    echo [OK] Entorno virtual ya existe.
-)
+echo -> Iniciando Backend API en puerto 8000...
+start cmd /k "title DBV PDF2Deck Backend API && cd /d %~dp0backend && call venv\Scripts\activate.bat && uvicorn main:app --port 8000"
 
-echo [3/5] Activando entorno...
-call venv\Scripts\activate.bat
-if errorlevel 1 goto :fail
+echo -> Iniciando Web Client en puerto 5500...
+start cmd /k "title DBV PDF2Deck Web Client && cd /d %~dp0frontend && python -m http.server 5500"
 
-echo [4/5] Instalando dependencias (puede tardar varios minutos)...
-python -m pip install --upgrade pip setuptools wheel
-if errorlevel 1 goto :fail
-pip install -r requirements.txt
-if errorlevel 1 goto :fail
-
-cd /d "%~dp0"
-echo [5/5] Instalacion completada.
+echo -> Abriendo navegador...
+start "" "http://localhost:5500"
 
 echo.
-echo ========================================================
-echo Instalacion lista. Iniciando la aplicacion...
-echo ========================================================
-call "%~dp0ejecutar_dbv.cmd"
-exit /b %errorlevel%
-
-:fail
-echo.
-echo [ERROR] No se pudo completar la instalacion.
-echo Revisa el mensaje anterior y vuelve a intentarlo.
-pause
-exit /b 1
+echo Todo iniciado correctamente.
+echo Si quieres detener servicios, ejecuta stop_dev.cmd
+exit /b 0

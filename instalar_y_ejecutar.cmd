@@ -3,42 +3,42 @@ setlocal enableextensions
 cd /d "%~dp0"
 
 echo ========================================================
-echo DBV PDF2Deck - Instalador 1 clic (Windows)
+echo DBV PDF2Deck - Instalador 1 clic (Windows) v1.5
 echo ========================================================
-
 echo [1/5] Detectando Python...
 set "PY_CMD="
-where py >nul 2>nul
+set "PY_DESC="
+
+rem --- Priorizar Python Launcher fijado a 3.12 ---
+py -3.12 -c "import sys" >nul 2>nul
 if not errorlevel 1 (
-    py -3.12 -c "import sys" >nul 2>nul
-    if not errorlevel 1 set "PY_CMD=py -3.12"
-)
-if not defined PY_CMD (
-    where py >nul 2>nul
-    if not errorlevel 1 set "PY_CMD=py -3"
-)
-if not defined PY_CMD (
-    where python >nul 2>nul
-    if not errorlevel 1 set "PY_CMD=python"
+    set "PY_CMD=py -3.12"
+    set "PY_DESC=py -3.12"
 )
 
+rem --- Si no hay launcher, buscar un python.exe que sea exactamente 3.12 ---
+if not defined PY_CMD (
+    for /f "delims=" %%i in ('where python 2^>nul') do (
+        "%%~fi" -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 12) else 1)" >nul 2>nul
+        if not errorlevel 1 (
+            set "PY_CMD=\"%%~fi\""
+            set "PY_DESC=%%~fi"
+            goto :python_found
+        )
+    )
+)
+
+:python_found
 if not defined PY_CMD (
     echo.
-    echo [ERROR] No se encontro Python en este equipo.
-    echo Se abrira automaticamente la web oficial de Python.
-    start "" "https://www.python.org/downloads/release/python-3120/"
-    echo.
-    echo PASOS GUIADOS:
-    echo   1) Descarga e instala Python 3.12 (Windows x86-64 executable installer)
-    echo   2) Marca la casilla "Add Python to PATH"
-    echo   3) Cierra esta ventana y vuelve a ejecutar: instalar_y_ejecutar.cmd
-    echo.
-    echo Nota: Si ya instalaste Python y no se detecta, reinicia la sesion de Windows.
+    echo [ERROR] No se encontro Python 3.12 utilizable en este equipo.
+    echo Este proyecto requiere Python 3.12. Python 3.13 no es compatible.
+    echo Asegurate de que Python 3.12 esta instalado y que el comando ^`py -3.12^` funciona.
     pause
     exit /b 1
 )
 
-echo [OK] Usando: %PY_CMD%
+echo [OK] Usando: %PY_DESC%
 
 echo [2/5] Preparando entorno virtual...
 cd /d "%~dp0backend"
