@@ -304,10 +304,11 @@ rompe nada hoy; se dejan anotadas para no volver a descubrirlas.
   fotograma, y `_handlePoints()` reserva un objeto y ocho arrays en cada `mousemove` de hover. Con muchos
   bloques marcados como modificados esto es presión de GC pura. Normalizar al recibir el payload y hacer
   las pruebas de impacto sin objetos intermedios.
-- **Añadir, quitar o aplicar una goma dispara `cycleViewEngine()`**, que vuelve a decodificar el PNG de la
-  página entera para un cambio que solo necesita un repintado. Requiere subir `{ctx, canvas, bgImage}` al
-  ámbito del módulo. Desde el 2026-08-29 «Borrar zona» también pasa por ahí: era la única forma de que la
-  capa de interacción dejara de repintar la imagen sucia que tenía capturada en su closure.
+- ~~**Añadir o quitar una goma dispara `cycleViewEngine()`**, que vuelve a decodificar el PNG de la página
+  entera para un cambio que solo necesita un repintado.~~ **Resuelto el 2026-08-29**: `canvasScope`
+  (`{canvas, ctx, bgImage, blocks}`) vive en el ámbito del módulo y `repaintCanvas()` es el único camino
+  de repintado. `replaceCanvasBackground()` cambia la imagen de fondo en caliente. Las cuatro operaciones
+  de goma y el cierre del editor inline ya no re-renderizan la página.
 - **La frontera `window.dbvShell` es demasiado fina.** `canvas_engine.js` todavía conoce el marcado de la
   barra (`_setBtnLabel`/`_getBtnLabel` codifican el contrato `<svg> + <span class="btn-txt">`) y
   `main.js` alterna a mano la visibilidad del panel de carga y del editor. Ese conocimiento pertenece al

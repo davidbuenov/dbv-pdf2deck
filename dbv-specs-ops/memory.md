@@ -81,6 +81,85 @@
   **Regla general**: toda API web de descarga o de sistema de ficheros hay que darla por muerta bajo Tauri
   hasta demostrar lo contrario — falla sin excepción y sin ruido.
 
+- **2026-08-29 — El DPI de exportación se desacopla del DPI de OCR.** El lienzo y el OCR rasterizan a
+  100 DPI porque ahí manda la velocidad de EasyOCR, pero ese mismo raster acababa siendo el fondo de cada
+  diapositiva del PPTX: todo lo no editado se veía blando junto al texto editado, que sí es vectorial. El
+  PDF no sufría el problema porque `_build_pdf_export_from_original_reportlab()` superpone un overlay
+  sobre el PDF original y conserva el vectorial. Ahora `build_pptx_export()` recibe `source_pdf_path` y
+  re-rasteriza cada página desde el PDF original a `payload["export_dpi"]` (150/200/300/400/600, por
+  defecto 300), seleccionable en el menú de exportación.
+  - **Trampa que casi se cuela**: las bboxes de los bloques están en píxeles del lienzo, y `ratio_x/ratio_y`
+    se calculaban con el ancho de la imagen de fondo. Al meter un fondo 3x mayor, cada cuadro de texto
+    habría aterrizado a un tercio de su posición. Las ratios se calculan **siempre** con el tamaño del
+    lienzo; el fondo solo se estira al tamaño del slide. Verificado comparando la geometría de todos los
+    shapes antes y después: idéntica.
+  - **1200 DPI descartado con números**, no por intuición: sobre una página de 19x12 in son 23008x14411 px,
+    331 Mpx y ~1 GB de RAM por página (medido con pypdfium2), por encima del umbral de decompression bomb
+    de Pillow y de lo que PowerPoint maneja. 600 DPI se queda como techo (249 MB/página).
+  - Dos exclusiones deliberadas: las entradas que son **imagen** (el raster del lienzo ya son los píxeles
+    originales, no hay nitidez que recuperar) y las páginas con `ai_cleaned_bg` (los píxeles corregidos por
+    la goma solo existen en el lienzo; volver al original los perdería).
+
+- **[La ayuda larga no va en el diccionario de i18n]**: `i18n.js` es para etiquetas de interfaz. La guía de
+  uso vive en `frontend/help_content.js` como **dos documentos completos e independientes** (ES/EN).
+  Trocear prosa larga en claves obliga a redactar cada idioma con la sintaxis del otro y produce textos
+  que se leen como una traducción automática.
+
+- **2026-08-29 — Detectar «texto nativo» contando caracteres es un falso positivo garantizado.**
+  `process_pdf_file()` decidía con `len(re.sub(r"[\W_]+", "", raw_text)) > 20`. Un PDF de infografías
+  (`ICU-Storytelia.pdf`) trae por página una sola imagen y 51 caracteres de mobiliario: `"Página 1 ·
+  Powered by Storytelling Nexthealth · 1 / 10"`. 41 alfanuméricos superan el umbral, la página se da por
+  nativa, **el OCR no se ejecuta nunca** y el usuario recibe 3 bloques de pie de página con todo el
+  contenido real encerrado en la imagen. El patrón es comunísimo: Canva, NotebookLM, cualquier
+  exportación con numeración automática.
+  - **El discriminador correcto es la cobertura de área**, no el recuento: medido sobre PDFs reales, un
+    pie de página cubre el 0,43 % de la página y un documento de texto entre el 24 % y el 33 %. Dos
+    órdenes de magnitud de separación, así que el umbral (2 %, `DBV_NATIVE_TEXT_MIN_COVERAGE`) no es
+    delicado. Se exigen ambas condiciones: caracteres suficientes **y** cobertura mínima.
+  - Verificado de punta a punta: la página pasaba de 0 bloques a **121 bloques** de OCR en 3,8 s, y los
+    cuatro PDFs de `docs_david/pruebas/` se enrutan correctamente.
+  - **Ojo con `get_objects()` de pypdfium2**: no desciende a los XObjects anidados, así que medir áreas
+    con él da 0 % de texto en páginas que sí lo tienen. La medida fiable sale de las líneas que ya
+    extrae `_pdfium_native_lines()`, que es además el mismo dato que luego consume el pipeline.
+
+- **2026-08-29 — EasyOCR devuelve trozos, no párrafos; y el DPI de proceso pesa más que cualquier heurística.**
+  En una infografía densa, 121 fragmentos correspondían a 46 líneas visuales, con una línea partida hasta
+  en 8 trozos. Eso hacía la edición inviable, rompía la exportación (cada trozo, un cuadro de texto suelto
+  en el PPTX) y estropeaba la estimación de cuerpo de fuente. Se añadió una fusión en dos pasadas en
+  `ocr_engine.py`: fragmentos → líneas → párrafos, con umbrales relativos a la altura de línea (nunca en
+  píxeles absolutos, para que valgan igual a 100 que a 300 DPI) y desactivable con `DBV_OCR_MERGE_BLOCKS=0`.
+  - **Tres trampas encontradas al afinar, todas del mismo tipo: usar la geometría equivocada como referencia.**
+    1. *Bola de nieve vertical.* Decidir la pertenencia a una línea comparando contra su caja envolvente
+       hace que cada absorción estire la línea, que así se vuelve elegible para tragarse el párrafo de
+       debajo. La referencia debe ser una **banda de fila** (mediana de centros y alturas), que no crece.
+    2. *Orden de lectura barajado.* EasyOCR no devuelve los fragmentos ordenados, y concatenarlos según
+       llegan producía «Como profesionalesinmersos Hola cdlegas». Hay que guardar la posición de cada
+       fragmento y emitir el texto ordenado por (fila, x) al final, no al absorber.
+    3. *Tolerancia de alineación escalada con la línea más ancha.* Un fragmento de dos palabras encajaba
+       en cualquier titular largo por pura holgura. Debe escalarse con la **más estrecha**, con un suelo
+       de dos alturas de línea para la sangría legítima.
+  - **El hallazgo mayor: el DPI de proceso domina.** El pipeline rasteriza a 100 DPI «para no asfixiar al
+    OCR», pero a esa resolución el cuerpo de texto de una infografía mide 10 px y EasyOCR devuelve basura
+    (confianza mediana 0,52; «nueslros pacientes llujo _ Hemo<»). A 200 DPI la misma página da confianza
+    mediana 0,71 y el párrafo se lee entero y correcto. Medido en bloques finales: 121→57 fusionando a
+    100 DPI, frente a 136→**38** fusionando a 200 DPI. Coste: +1,5 s por página y el payload de un
+    documento de 10 páginas pasa de 15,5 MB a 44,2 MB en base64.
+  - **Corolario, ya implementado**: el DPI de OCR y el del lienzo son decisiones distintas y se han
+    desacoplado, igual que antes el de exportación. `CANVAS_DPI` sigue en 100 y `OCR_DPI` (200 por defecto,
+    `DBV_OCR_DPI`) rige un render aparte que se lee y **se descarta en la misma iteración**: mantener las
+    dos resoluciones de las diez páginas a la vez duplicaría de largo la memoria del proceso.
+    `analyze_image()` recibe una `scale` y hace todo el análisis —recortes, colores, alturas de línea— en
+    el espacio de la imagen leída, que es donde está la información, aplicando la escala solo al emitir.
+    Resultado sobre la página de prueba: 38 bloques, ninguno fuera del lienzo, `"Página 1"` leído entero y
+    el párrafo de cuerpo correcto y de una pieza, con el payload y la memoria del canvas intactos.
+  - **La escala se mide sobre los píxeles obtenidos, nunca sobre los DPI pedidos**: `render_pdf_page_at_dpi()`
+    recorta la resolución en páginas enormes, y dar por hecho el ratio teórico dejaría todas las cajas
+    desplazadas justo en los documentos más grandes.
+  - **Dónde está el techo de la fusión, para no volver a intentarlo**: en la infografía, las cuatro
+    etiquetas bajo los iconos tienen huecos de 0,54-0,58 alturas de línea, y las palabras de un párrafo
+    real 0,19-0,65. Son indistinguibles por geometría de hueco; separarlas exigiría detección de columnas
+    por valles de blanco en toda la página. Cualquier umbral que las separe romperá párrafos legítimos.
+
 - **[Posicionamiento de toolbars flotantes hijas del Canvas]**: Cualquier toolbar contextual flotante asociada a coordenadas de bloques de canvas debe insertarse dentro de `#canvas-wrapper` (que tiene posicionamiento relativo) y no en el `body`/`main`, para evitar desalineaciones con el zoom y scroll del lienzo.
 
 - **[El pack de OCR no es un extra para minorías]**: el README vende como caso de uso principal los PDFs de solo imagen y las infografías de IA — justo las rutas que pasan por OCR. Un instalador pequeño que deje al usuario sin la función que fue a buscar es peor que uno grande. El asistente de primer arranque es alcance obligatorio.

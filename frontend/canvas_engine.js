@@ -80,6 +80,9 @@ const ZOOM_STEP = 0.1;
 const TEXT_BOX_PADDING = 8;
 const TEXT_LINE_HEIGHT_MULTIPLIER = 1.15;
 const EXPORT_TARGETS_STORAGE_KEY = "dbv_export_targets_v1";
+const EXPORT_DPI_STORAGE_KEY = "dbv_export_dpi_v1";
+const EXPORT_DPI_CHOICES = [150, 200, 300, 400, 600];
+const EXPORT_DPI_DEFAULT = 300;
 const INLINE_EDIT_BG_MODE_STORAGE_KEY = "dbv_inline_edit_bg_mode_v1";
 const _measurementCanvas = document.createElement("canvas");
 const _measurementCtx = _measurementCanvas.getContext("2d");
@@ -366,6 +369,28 @@ function saveExportTargetsPreference(targets) {
     }
 }
 
+/**
+ * Lee el DPI de exportacion guardado, acotandolo a la lista admitida. El
+ * backend vuelve a validarlo: esto es comodidad, no confianza.
+ * @returns {number} DPI valido.
+ */
+function loadExportDpiPreference() {
+    try {
+        const stored = Number(localStorage.getItem(EXPORT_DPI_STORAGE_KEY));
+        return EXPORT_DPI_CHOICES.includes(stored) ? stored : EXPORT_DPI_DEFAULT;
+    } catch {
+        return EXPORT_DPI_DEFAULT;
+    }
+}
+
+function saveExportDpiPreference(dpi) {
+    try {
+        localStorage.setItem(EXPORT_DPI_STORAGE_KEY, String(dpi));
+    } catch {
+        // En modo privado o con storage bloqueado, se omite persistencia sin romper UX.
+    }
+}
+
 function resolveEditableFontSize(block) {
     normalizeBlock(block);
     const [x0, y0, x1, y1] = block.bbox;
@@ -537,7 +562,18 @@ function _isResizeInteractiveBlock(block) {
 
 // Variables reactivas de estado (Toolbar UI)
 let currentTargetBlock = null;
-let currentCanvasCtx = null;
+
+/**
+ * Ambito de pintado de la pagina activa: `{ canvas, ctx, bgImage, blocks }`.
+ *
+ * Vive en el modulo y no en el closure de `mountInteractionLayer()` porque la
+ * imagen de fondo cambia en caliente (goma, limpieza de fondo) y el closure la
+ * congelaba: actualizar `page.image_base64` no bastaba, el siguiente repintado
+ * del arrastre volvia a dibujar la imagen antigua y deshacia visualmente el
+ * borrado. Teniendola aqui, sustituir el fondo es cambiar un campo y repintar,
+ * sin rehacer el canvas ni redecodificar el PNG de la pagina entera.
+ */
+let canvasScope = null;
 let currentTargetInitialFontSize = null;
 let currentTargetInitialFontLock = false;
 let selectionMarquee = null;
@@ -725,13 +761,9 @@ function _bindEraserActions() {
                 currentPage.image_base64 = "data:image/png;base64," + data.image_base64;
                 currentPage.ai_cleaned_bg = true;
 
-                // Re-render completo: `mountInteractionLayer` captura la imagen de
-                // fondo en su closure, asi que repintar aqui con una imagen suelta
-                // dejaria la capa de interaccion apuntando a la version sucia y el
-                // primer arrastre resucitaria lo borrado. `cycleViewEngine` recarga
-                // la imagen ya limpia y vuelve a montar la capa; `currentTargetBlock`
-                // sobrevive, de modo que la goma sigue seleccionada para reiterar.
-                cycleViewEngine();
+                // Solo cambia el fondo: la goma sigue seleccionada y en su sitio,
+                // asi que se puede reiterar el borrado sobre la misma zona.
+                await replaceCanvasBackground(currentPage.image_base64);
             } catch (err) {
                 const _t = (k, v) => window.DBV_I18N ? window.DBV_I18N.t(k, v) : k;
                 alert(_t("alerts.eraserError", { msg: err.message }));
@@ -755,8 +787,9 @@ function _bindEraserActions() {
                 currentPage.blocks.splice(idx, 1);
             }
             currentTargetBlock = null;
+            _hideFloatingToolbar();
             _syncEraserToolbarState();
-            cycleViewEngine();
+            repaintCanvas();
         };
     }
 }
@@ -958,7 +991,7 @@ function _bindInlineToolbarEvents() {
 function _closeInlineEditor(saveChanges) {
     if (!inlineEditorSession) return;
 
-    const { editor, block, originalText, ctxScope } = inlineEditorSession;
+    const { editor, block, originalText } = inlineEditorSession;
     const nextText = (editor.innerText || "").replace(/\r/g, "");
 
     if (saveChanges && nextText !== originalText) {
@@ -980,7 +1013,7 @@ function _closeInlineEditor(saveChanges) {
     inlineEditorSession = null;
     updateCleanBgButtonLabel();
 
-    paintCanvasLayers(ctxScope.ctx, ctxScope.canvas, ctxScope.bgImage, ctxScope.blocks);
+    repaintCanvas();
 }
 
 function startInlineBlockEdit(blocks, targetIndex, ctxScope) {
@@ -1018,13 +1051,7 @@ function startInlineBlockEdit(blocks, targetIndex, ctxScope) {
         editor,
         block,
         originalText: block.text || "",
-        canvas: ctxScope.canvas,
-        ctxScope: {
-            ctx: ctxScope.ctx,
-            canvas: ctxScope.canvas,
-            bgImage: ctxScope.bgImage,
-            blocks
-        }
+        canvas: ctxScope.canvas
     };
 
     _syncInlineToolbarFromBlock(block);
@@ -1197,7 +1224,7 @@ function initPagination(fullData) {
                     }
                 }
                 currentTargetBlock = keeper;
-                cycleViewEngine();
+                repaintCanvas();
                 _syncEraserToolbarState();
                 return;
             }
@@ -1225,7 +1252,8 @@ function initPagination(fullData) {
             currentBlocks.push(eraserBlock);
             currentTargetBlock = eraserBlock;
             saveToUndoStack();
-            cycleViewEngine();
+            _hideFloatingToolbar();
+            repaintCanvas();
             _syncEraserToolbarState();
         };
     }
@@ -1454,8 +1482,15 @@ function renderNativeCanvasEditor(pageData) {
             }
             applyZoomToCanvas(safeCanvas);
             
-            paintCanvasLayers(freshCtx, safeCanvas, renderSourceImage, pageData.blocks || []);
-            mountInteractionLayer(safeCanvas, freshCtx, renderSourceImage, pageData.blocks || []);
+            canvasScope = {
+                canvas: safeCanvas,
+                ctx: freshCtx,
+                bgImage: renderSourceImage,
+                blocks: pageData.blocks || []
+            };
+
+            repaintCanvas();
+            mountInteractionLayer(safeCanvas, freshCtx, canvasScope.blocks);
             
             if (!pageData.blocks || pageData.blocks.length === 0) {
                 const _t = (k, v) => window.DBV_I18N ? window.DBV_I18N.t(k, v) : k;
@@ -1478,6 +1513,46 @@ function renderNativeCanvasEditor(pageData) {
         ? pageData.image_base64
         : `data:image/png;base64,${pageData.image_base64}`;
     renderSourceImage.src = src;
+}
+
+/**
+ * Dibuja la etiqueta con el texto reconocido de un bloque de deteccion.
+ *
+ * Se reserva al bloque seleccionado. Va encima de la caja salvo que no quepa
+ * (bloques pegados al borde superior), en cuyo caso baja: la version anterior
+ * la pintaba siempre arriba y en la primera fila se salia del lienzo.
+ *
+ * @param {CanvasRenderingContext2D} ctx Contexto de dibujo.
+ * @param {HTMLCanvasElement} canvas Lienzo, para acotar la etiqueta a su ancho.
+ * @param {Object} block Bloque detectado.
+ * @param {number} x0 Borde izquierdo del bloque.
+ * @param {number} y0 Borde superior del bloque.
+ * @param {number} width Ancho del bloque.
+ * @param {number} height Alto del bloque.
+ */
+function _drawDetectionLabel(ctx, canvas, block, x0, y0, width, height) {
+    const LABEL_HEIGHT = 22;
+    const text = (block.text || "").replace(/\n/g, " ").trim();
+    if (!text) return;
+
+    ctx.save();
+    ctx.font = "bold 13px system-ui";
+    ctx.textBaseline = "middle";
+
+    const labelWidth = Math.min(canvas.width - x0, ctx.measureText(text).width + 14);
+    const fitsAbove = y0 - LABEL_HEIGHT >= 0;
+    const labelY = fitsAbove ? y0 - LABEL_HEIGHT : y0 + height;
+
+    // Oscura y opaca: sobre una infografia de colores, un chip blanco al 95%
+    // se confunde con el propio documento.
+    ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
+    ctx.fillRect(x0, labelY, labelWidth, LABEL_HEIGHT);
+    ctx.beginPath();
+    ctx.rect(x0, labelY, labelWidth, LABEL_HEIGHT);
+    ctx.clip();
+    ctx.fillStyle = "#f8fafc";
+    ctx.fillText(text, x0 + 7, labelY + LABEL_HEIGHT / 2);
+    ctx.restore();
 }
 
 function paintCanvasLayers(ctx, canvas, background, blocks) {
@@ -1588,21 +1663,22 @@ function paintCanvasLayers(ctx, canvas, background, blocks) {
             if (block.source === "native") {
                 return;
             }
-            // Guia inicial de detección raw
+            // Guia inicial de deteccion: solo el recuadro.
+            //
+            // La etiqueta blanca con el texto reconocido se dibujaba en TODOS los
+            // bloques a 14px fijos. En una infografia densa (121 bloques, altura
+            // mediana de 12px) esas etiquetas cubrian el 28,7% de la pagina frente
+            // al 18,2% de las propias cajas: tapaban mas documento del que dejaban
+            // ver, y encima duplicaban un texto que ya esta legible en la imagen de
+            // debajo. El borde solo ya identifica la region detectada.
             ctx.strokeStyle = "rgba(49, 130, 206, 0.8)";
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 1;
             ctx.strokeRect(x0, y0, width, height);
-            
-            if (!isInlineEditingBlock) {
-                ctx.font = "bold 14px system-ui";
-                ctx.textBaseline = "bottom";
-                const singleLineText = (block.text || "").replace(/\n/g, ' ');
-                const measurements = ctx.measureText(singleLineText);
-                
-                ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
-                ctx.fillRect(x0, y0 - 24, Math.min(width, measurements.width + 12), 24);
-                ctx.fillStyle = "#1a202c";
-                ctx.fillText(singleLineText, x0 + 6, y0 - 6);
+
+            // La etiqueta sobrevive donde si aporta: en el bloque seleccionado,
+            // para comprobar de un vistazo que el OCR leyo bien esa zona.
+            if (block === currentTargetBlock && !isInlineEditingBlock) {
+                _drawDetectionLabel(ctx, canvas, block, x0, y0, width, height);
             }
 
             // Bloque no modificado pero seleccionado: mostrar handles para facilitar resize.
@@ -1653,7 +1729,39 @@ function paintCanvasLayers(ctx, canvas, background, blocks) {
     }
 }
 
-function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
+/**
+ * Repinta la pagina activa a partir del ambito de modulo. Es el unico camino de
+ * repintado: nadie deberia volver a capturar la imagen de fondo en un closure.
+ */
+function repaintCanvas() {
+    if (!canvasScope) return;
+    paintCanvasLayers(canvasScope.ctx, canvasScope.canvas, canvasScope.bgImage, canvasScope.blocks);
+}
+
+/**
+ * Sustituye la imagen de fondo de la pagina activa y repinta, sin rehacer el
+ * canvas ni volver a montar la capa de interaccion.
+ * @param {string} dataUrl Imagen en data URI.
+ * @returns {Promise<void>}
+ */
+function replaceCanvasBackground(dataUrl) {
+    return new Promise((resolve, reject) => {
+        if (!canvasScope) {
+            resolve();
+            return;
+        }
+        const image = new Image();
+        image.onload = () => {
+            canvasScope.bgImage = image;
+            repaintCanvas();
+            resolve();
+        };
+        image.onerror = () => reject(new Error("No se pudo cargar la imagen procesada."));
+        image.src = dataUrl;
+    });
+}
+
+function mountInteractionLayer(canvas, ctx, blocks) {
     let isDragging   = false;
     let isResizing   = false;
     let isMarqueeSelecting = false;
@@ -1694,7 +1802,7 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
             return (physical.x >= x0 && physical.x <= x1 && physical.y >= y0 && physical.y <= y1);
         });
         if (clickedIdx !== -1) {
-            startInlineBlockEdit(blocks, clickedIdx, { ctx, canvas, bgImage });
+            startInlineBlockEdit(blocks, clickedIdx, canvasScope);
         }
     });
 
@@ -1721,7 +1829,7 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
                 } else {
                     selectedBlockIndices.splice(pos, 1);
                 }
-                paintCanvasLayers(ctx, canvas, bgImage, blocks);
+                repaintCanvas();
                 if (selectedBlockIndices.length >= 2) {
                     triggerMultiSelectToolbar(blocks, selectedBlockIndices, evt.clientX, evt.clientY);
                 } else {
@@ -1735,7 +1843,7 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
         if (selectedBlockIndices.length > 0 && !evt.ctrlKey) {
             selectedBlockIndices = [];
             document.getElementById("multi-toolbar").hidden = true;
-            paintCanvasLayers(ctx, canvas, bgImage, blocks);
+            repaintCanvas();
         }
 
         // 1. Comprobar handles de resize (recorrer desde el bloque superior hacia el fondo)
@@ -1793,7 +1901,7 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
                 x1: Math.max(marqueeStartX, physical.x),
                 y1: Math.max(marqueeStartY, physical.y)
             };
-            paintCanvasLayers(ctx, canvas, bgImage, blocks);
+            repaintCanvas();
             canvas.style.cursor = "crosshair";
             return;
         }
@@ -1812,7 +1920,7 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
 
             block.bbox = [x0, y0, x1, y1];
             block.is_modified = true;
-            paintCanvasLayers(ctx, canvas, bgImage, blocks);
+            repaintCanvas();
             return;
         }
 
@@ -1829,7 +1937,7 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
 
             block.bbox = [newX0, newY0, newX0 + w, newY0 + h];
             block.is_modified = true;
-            paintCanvasLayers(ctx, canvas, bgImage, blocks);
+            repaintCanvas();
             return;
         }
 
@@ -1865,7 +1973,7 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
                 selectedBlockIndices = intersected;
             }
 
-            paintCanvasLayers(ctx, canvas, bgImage, blocks);
+            repaintCanvas();
             updateCleanBgButtonLabel();
 
             if (selectedBlockIndices.length >= 2) {
@@ -1898,7 +2006,7 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
         if (clickTargetIndex !== -1) {
             currentTargetBlock = blocks[clickTargetIndex] || null;
             document.getElementById("floating-toolbar").hidden = true;
-            startInlineBlockEdit(blocks, clickTargetIndex, { ctx, canvas, bgImage });
+            startInlineBlockEdit(blocks, clickTargetIndex, canvasScope);
         }
 
         isDragging       = false;
@@ -2066,7 +2174,6 @@ function triggerVisualEditModal(blocks, targetIndex, ctxScope, domX, domY) {
     const block = blocks[targetIndex];
     normalizeBlock(block);
     currentTargetBlock = block;
-    currentCanvasCtx = ctxScope;
     currentTargetInitialFontLock = !!block.font_size_locked;
 
     const nonNativeWarning = document.getElementById("tb-warning-non-native");
@@ -2265,6 +2372,14 @@ function mountExportControls(fullPayload) {
     const exportMdInput = document.getElementById("export-md");
     if (!exportPdfInput || !exportPptxInput || !exportMdInput) return;
 
+    const exportDpiSelect = document.getElementById("export-dpi");
+    if (exportDpiSelect) {
+        exportDpiSelect.value = String(loadExportDpiPreference());
+        exportDpiSelect.addEventListener("change", () => {
+            saveExportDpiPreference(Number(exportDpiSelect.value));
+        });
+    }
+
     const savedTargets = loadExportTargetsPreference();
     exportPdfInput.checked = !!savedTargets.pdf;
     exportPptxInput.checked = !!savedTargets.pptx;
@@ -2315,6 +2430,10 @@ function mountExportControls(fullPayload) {
             md: exportMd
         };
         saveExportTargetsPreference(fullPayload.export_targets);
+
+        const selectedDpi = Number(exportDpiSelect?.value) || EXPORT_DPI_DEFAULT;
+        fullPayload.export_dpi = EXPORT_DPI_CHOICES.includes(selectedDpi) ? selectedDpi : EXPORT_DPI_DEFAULT;
+        saveExportDpiPreference(fullPayload.export_dpi);
         
         try {
             // Sanitizar payload eliminando bloques de goma efímeros. Copia

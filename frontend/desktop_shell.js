@@ -131,6 +131,48 @@ function mountAboutModal() {
     return close;
 }
 
+// ─── Ayuda ───────────────────────────────────────────────────────────────────
+/**
+ * Monta el modal de ayuda. El contenido no vive en el diccionario de i18n: cada
+ * idioma es un documento completo en `help_content.js`, y se reinyecta al
+ * cambiar de idioma para que la ayuda abierta cambie con la interfaz.
+ * @returns {(() => void) | null} Cerrador del modal, o null si falta el marcado.
+ */
+function mountHelpModal() {
+    const modal = $("help-modal");
+    const btnOpen = $("btn-help");
+    const btnClose = $("help-close");
+    const backdrop = $("help-backdrop");
+    const body = $("help-body");
+    if (!modal || !btnOpen || !body) return null;
+
+    const paint = () => {
+        const lang = window.DBV_I18N?.getLang?.() === "en" ? "en" : "es";
+        body.innerHTML = window.DBV_HELP?.[lang] ?? "";
+        body.scrollTop = 0;
+    };
+
+    const open = () => {
+        paint();
+        modal.hidden = false;
+        if (btnClose) btnClose.focus();
+    };
+    const close = () => {
+        modal.hidden = true;
+        btnOpen.focus();
+    };
+
+    btnOpen.onclick = open;
+    if (btnClose) btnClose.onclick = close;
+    if (backdrop) backdrop.onclick = close;
+
+    document.addEventListener("dbv-lang-changed", () => {
+        if (!modal.hidden) paint();
+    });
+
+    return close;
+}
+
 // ─── Actualizaciones ─────────────────────────────────────────────────────────
 function setBtnText(btn, text) {
     const slot = btn.querySelector(".btn-txt");
@@ -311,6 +353,7 @@ if (runningInTauri) {
 }
 
 const closeAbout = mountAboutModal();
+const closeHelp = mountHelpModal();
 const closeExportMenu = mountExportMenu();
 mountLangToggle();
 mountAlwaysOnTop();
@@ -320,8 +363,12 @@ paintRuntimeMode();
 document.addEventListener("keydown", (evt) => {
     if (evt.key !== "Escape") return;
     const modal = $("about-modal");
+    const help = $("help-modal");
     const menu = $("export-menu");
-    if (modal && !modal.hidden) {
+    if (help && !help.hidden) {
+        evt.preventDefault();
+        closeHelp?.();
+    } else if (modal && !modal.hidden) {
         evt.preventDefault();
         closeAbout?.();
     } else if (menu && !menu.hidden) {

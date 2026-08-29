@@ -19,9 +19,9 @@ from typing import Any
 from core.ai_cleaner import clean_image_with_ai, clean_image_with_inpaint
 from core.exporter_engine import generate_export_zip
 from core.ocr_engine import analyze_image
-from core.pdf_renderer import process_document_file
+from core.pdf_renderer import process_document_file, render_pdf_page_at_dpi
 from core.result import Err, Ok
-from core.settings import MAX_UPLOAD_BYTES, MAX_UPLOAD_MB
+from core.settings import EXPORT_DEFAULT_DPI, MAX_UPLOAD_BYTES, MAX_UPLOAD_MB, OCR_DPI
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.background import BackgroundTasks
 from fastapi.responses import FileResponse, StreamingResponse
@@ -74,6 +74,8 @@ class ProcessResponse(BaseModel):
     total_pages: int
     export_mode: str = "only_modified"
     export_targets: dict[str, bool] = {"pdf": True, "pptx": True, "md": True}
+    # Resolución del fondo incrustado en el PPTX. No toca al OCR ni al lienzo.
+    export_dpi: int = EXPORT_DEFAULT_DPI
     pages: list[PageResponse]
 
 class CleanBackgroundRequest(BaseModel):
@@ -84,6 +86,47 @@ class CleanBackgroundRequest(BaseModel):
 class CleanBackgroundLocalRequest(BaseModel):
     image_base64: str
     boxes: list[dict[str, Any]] = []
+
+
+# El lienzo que viaja al frontend se rasteriza siempre a esta resolución. Subirla
+# multiplicaría por cuatro el payload y la memoria del canvas sin mejorar la
+# lectura, que ya se hace aparte a `OCR_DPI`.
+CANVAS_DPI = 100
+
+
+def _ocr_source_for(
+    render: Any, source_path: Path, is_pdf: bool
+) -> tuple[Any, float]:
+    """
+    Devuelve la imagen sobre la que leer y la escala para volver al lienzo.
+
+    Para un PDF se re-rasteriza la página a `OCR_DPI` y se descarta en cuanto se
+    ha leído: mantener las dos resoluciones de las diez páginas a la vez
+    duplicaría de largo la memoria del proceso. Para una imagen subida no hay
+    nada que re-rasterizar (sus píxeles son los que son), así que se lee la
+    misma que se dibuja.
+
+    Args:
+        render (PageRender): Página ya renderizada para el lienzo.
+        source_path (Path): Fichero original recibido en la petición.
+        is_pdf (bool): Si el original es un PDF re-rasterizable.
+
+    Returns:
+        tuple[Image.Image, float]: Imagen a leer y factor lienzo/lectura.
+    """
+    if not is_pdf or OCR_DPI <= CANVAS_DPI:
+        return render.image, 1.0
+
+    match render_pdf_page_at_dpi(source_path, render.page_num, OCR_DPI):
+        case Ok(hi_res):
+            # La escala real se mide sobre los píxeles obtenidos, no sobre los
+            # DPI pedidos: `render_pdf_page_at_dpi()` puede haber recortado la
+            # resolución en páginas enormes, y dar por hecho el ratio teórico
+            # dejaría todas las cajas desplazadas.
+            return hi_res, float(render.image.width) / float(max(1, hi_res.width))
+        case Err(reason):
+            print(f"[WARN] Lectura a {OCR_DPI} DPI descartada, se usa el lienzo: {reason}")
+            return render.image, 1.0
 
 
 @router.get("/process-log-stream/{doc_id}")
@@ -186,8 +229,10 @@ def process_document(file: UploadFile = File(...), doc_id: str | None = Form(Non
         _log_processing_step(doc_id, f"Documento persistido temporalmente como '{persisted_doc_path.name}'.")
         _log_processing_step(doc_id, "Iniciando inspección estructural y renderizado de páginas...")
 
-        # Procesamos con resolución 100DPI para no asfixiar a localizadores pesados en el MVP
-        render_result = process_document_file(tmp_path, dpi=100)
+        # El lienzo se rasteriza a 100 DPI: es la resolución con la que el editor
+        # se mueve con soltura y la que viaja al frontend. La lectura se hace
+        # aparte, a OCR_DPI, en `_ocr_source_for()`.
+        render_result = process_document_file(tmp_path, dpi=CANVAS_DPI)
         
         match render_result:
             case Err(msg):
@@ -234,8 +279,17 @@ def process_document(file: UploadFile = File(...), doc_id: str | None = Form(Non
                             for b in render.native_blocks
                         ]
                     else:
-                        _log_processing_step(doc_id, f"Página {human_page_num}: ejecutando OCR EasyOCR sobre imagen renderizada.")
-                        ocr_res = analyze_image(render.page_num, render.image)
+                        ocr_image, ocr_scale = _ocr_source_for(render, tmp_path, is_pdf_upload)
+                        _log_processing_step(
+                            doc_id,
+                            f"Página {human_page_num}: ejecutando OCR EasyOCR a "
+                            f"{ocr_image.width}x{ocr_image.height} px"
+                            + (f" (lectura a {OCR_DPI} DPI, escala {ocr_scale:.2f})" if ocr_scale != 1.0 else "")
+                            + "."
+                        )
+                        ocr_res = analyze_image(render.page_num, ocr_image, ocr_scale)
+                        if ocr_scale != 1.0:
+                            ocr_image.close()
                         match ocr_res:
                             case Ok(ocr_blocks):
                                 _log_processing_step(

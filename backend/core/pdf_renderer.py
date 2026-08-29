@@ -22,7 +22,14 @@ from PIL import Image, ImageOps
 
 from .ocr_engine import OCRBlock
 from .result import Err, Ok, Result
-from .settings import MAX_IMAGE_SIDE_PX, MAX_IMAGE_TOTAL_PIXELS
+from .settings import (
+    EXPORT_MAX_SIDE_PX,
+    EXPORT_MAX_TOTAL_PIXELS,
+    MAX_IMAGE_SIDE_PX,
+    MAX_IMAGE_TOTAL_PIXELS,
+    NATIVE_TEXT_MIN_CHARS,
+    NATIVE_TEXT_MIN_COVERAGE,
+)
 
 SUPPORTED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
@@ -231,6 +238,95 @@ def _pdfium_native_lines(page: object, page_height_pt: float) -> list[dict[str, 
 
 
 
+def _native_text_coverage(
+    native_lines: list[dict], page_width_pt: float, page_height_pt: float
+) -> float:
+    """
+    Fracción de la página cubierta por las cajas de texto nativo.
+
+    Es el discriminador entre «documento de texto» y «imagen con pie de
+    página»: medido sobre PDFs reales, un pie de página cubre ~0,4 % de la
+    página y un documento de texto entre el 24 % y el 33 %.
+
+    Args:
+        native_lines (list[dict]): Líneas devueltas por `_pdfium_native_lines()`.
+        page_width_pt (float): Ancho de la página en puntos.
+        page_height_pt (float): Alto de la página en puntos.
+
+    Returns:
+        float: Cobertura entre 0.0 y 1.0. Las cajas solapadas suman dos veces,
+        lo cual solo puede empujar hacia «nativo», nunca a omitir OCR de más.
+    """
+    page_area = max(1.0, float(page_width_pt) * float(page_height_pt))
+    covered = 0.0
+    for line in native_lines:
+        x0, y0, x1, y1 = (float(value) for value in line["bbox"])
+        covered += abs(x1 - x0) * abs(y1 - y0)
+    return min(1.0, covered / page_area)
+
+
+def clamp_export_dpi(page_width_pt: float, page_height_pt: float, requested_dpi: int) -> int:
+    """
+    Baja el DPI pedido hasta que la página quepa en los techos de exportación.
+
+    Rasterizar sin mirar el tamaño de la página es la vía rápida al MemoryError:
+    600 DPI sobre una página A3 apaisada son más de 300 millones de píxeles. Se
+    prefiere degradar la nitidez a reventar la exportación entera.
+
+    Args:
+        page_width_pt (float): Ancho de la página en puntos tipográficos.
+        page_height_pt (float): Alto de la página en puntos tipográficos.
+        requested_dpi (int): Resolución solicitada por el usuario.
+
+    Returns:
+        int: DPI efectivo, nunca por debajo de 72.
+    """
+    width_in = max(0.01, float(page_width_pt) / 72.0)
+    height_in = max(0.01, float(page_height_pt) / 72.0)
+
+    dpi_by_side = min(EXPORT_MAX_SIDE_PX / width_in, EXPORT_MAX_SIDE_PX / height_in)
+    dpi_by_area = (EXPORT_MAX_TOTAL_PIXELS / (width_in * height_in)) ** 0.5
+
+    return max(72, int(min(float(requested_dpi), dpi_by_side, dpi_by_area)))
+
+
+def render_pdf_page_at_dpi(file_path: Path, page_index: int, dpi: int) -> Result[Image.Image]:
+    """
+    Rasteriza una única página del PDF original a la resolución indicada.
+
+    Se usa solo al exportar a PPTX, que no admite páginas vectoriales y necesita
+    un fondo de mapa de bits. El DPI se acota con `clamp_export_dpi()`.
+
+    Args:
+        file_path (Path): Ruta del PDF original conservado en `DOCUMENT_STORE`.
+        page_index (int): Índice de página en base cero.
+        dpi (int): Resolución solicitada.
+
+    Returns:
+        Result[Image.Image]: Imagen RGB de la página, o el motivo del fallo.
+    """
+    resultado: Result[Image.Image]
+    if not file_path.exists() or file_path.suffix.lower() != ".pdf":
+        return Err(f"No hay PDF original utilizable en: {file_path}")
+
+    document = None
+    try:
+        document = pdfium.PdfDocument(str(file_path))
+        if page_index < 0 or page_index >= len(document):
+            return Err(f"La página {page_index} no existe en el PDF original.")
+
+        page = document[page_index]
+        effective_dpi = clamp_export_dpi(float(page.get_width()), float(page.get_height()), dpi)
+        rendered = page.render(scale=effective_dpi / 72.0).to_pil().convert("RGB")
+        resultado = Ok(rendered)
+    except Exception as error:
+        resultado = Err(f"Fallo al rasterizar la página {page_index} a {dpi} DPI: {error!s}")
+    finally:
+        if document is not None:
+            document.close()
+    return resultado
+
+
 def process_image_file(file_path: Path, dpi: int = 150) -> Result[PDFDocumentContext]:
     """
     Procesa una imagen individual como si fuera un documento de una sola página,
@@ -320,8 +416,21 @@ def process_pdf_file(file_path: Path, dpi: int = 150) -> Result[PDFDocumentConte
                 text_page = page.get_textpage()
                 raw_text = text_page.get_text_bounded() or ""
                 native_text = re.sub(r"[\W_]+", "", raw_text)
-                has_native_text = len(native_text) > 20
-                native_lines = _pdfium_native_lines(page, page_height_pt) if has_native_text else []
+
+                # Dos condiciones, no una. Los caracteres solos no distinguen un
+                # documento de texto de una infografía con pie de página, y dar
+                # por nativa una página que es una imagen con firma al pie omite
+                # el OCR y deja todo el contenido real sin leer.
+                native_lines = (
+                    _pdfium_native_lines(page, page_height_pt)
+                    if len(native_text) > NATIVE_TEXT_MIN_CHARS
+                    else []
+                )
+                has_native_text = _native_text_coverage(
+                    native_lines, page_width_pt, page_height_pt
+                ) >= NATIVE_TEXT_MIN_COVERAGE
+                if not has_native_text:
+                    native_lines = []
                 rendered_image = page.render(scale=zoom_factor).to_pil().convert("RGB")
                 pixel_count = rendered_image.width * rendered_image.height
                 if rendered_image.width > MAX_IMAGE_SIDE_PX or rendered_image.height > MAX_IMAGE_SIDE_PX:

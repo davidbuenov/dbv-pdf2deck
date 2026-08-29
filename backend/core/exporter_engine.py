@@ -22,6 +22,9 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen.canvas import Canvas
 
+from .result import Err, Ok
+from .settings import EXPORT_JPEG_QUALITY, EXPORT_PNG_MAX_BYTES, resolve_export_dpi
+
 try:
     from pptx import Presentation
     from pptx.dml.color import RGBColor
@@ -321,10 +324,81 @@ def build_pdf_export_from_original(payload: dict, source_pdf_path: Path) -> byte
 
 
 
-def build_pptx_export(payload: dict) -> bytes:
+def _encode_background(image: Any) -> bytes:
+    """
+    Serializa el fondo de un slide priorizando PNG sin pérdida.
+
+    Si el PNG se dispara (páginas fotográficas a 400-600 DPI dan cientos de MB
+    por deck) se pasa a JPEG de alta calidad: sigue siendo muchísimo mejor que
+    el raster de 100 DPI del lienzo, que es el problema que se quiere resolver.
+
+    Args:
+        image (Image.Image): Página ya rasterizada en RGB.
+
+    Returns:
+        bytes: Contenido del fichero de imagen listo para incrustar.
+    """
+    png_buffer = io.BytesIO()
+    image.save(png_buffer, format="PNG")
+    png_bytes = png_buffer.getvalue()
+    if len(png_bytes) <= EXPORT_PNG_MAX_BYTES:
+        return png_bytes
+
+    jpeg_buffer = io.BytesIO()
+    image.save(jpeg_buffer, format="JPEG", quality=EXPORT_JPEG_QUALITY, optimize=True)
+    jpeg_bytes = jpeg_buffer.getvalue()
+    logger.info(
+        "Fondo de %.1f MB en PNG sustituido por JPEG q%d de %.1f MB.",
+        len(png_bytes) / 1e6, EXPORT_JPEG_QUALITY, len(jpeg_bytes) / 1e6
+    )
+    return jpeg_bytes
+
+
+def _high_res_background(page_data: dict, source_pdf_path: Path | None, export_dpi: int) -> bytes | None:
+    """
+    Devuelve el fondo del slide re-rasterizado del PDF original, o `None`.
+
+    Se descarta en dos casos legítimos: cuando no hay PDF de origen (la entrada
+    era una imagen, donde el raster del lienzo ya son los píxeles originales y
+    no hay nada que recuperar) y cuando la página se limpió con la goma o el
+    inpaint, porque esos píxeles corregidos solo existen en el raster del
+    lienzo y volver al original los perdería.
+
+    Args:
+        page_data (dict): Página tal y como la envía el frontend.
+        source_pdf_path (Path | None): PDF original conservado hasta la exportación.
+        export_dpi (int): Resolución solicitada.
+
+    Returns:
+        bytes | None: Imagen codificada, o `None` si toca usar el lienzo.
+    """
+    if source_pdf_path is None or not source_pdf_path.exists():
+        return None
+    if page_data.get("ai_cleaned_bg"):
+        return None
+
+    from .pdf_renderer import render_pdf_page_at_dpi
+
+    match render_pdf_page_at_dpi(source_pdf_path, int(page_data.get("page_num", 0)), export_dpi):
+        case Ok(rendered):
+            try:
+                return _encode_background(rendered)
+            finally:
+                rendered.close()
+        case Err(reason):
+            logger.warning("Fondo de alta resolución descartado, se usa el lienzo: %s", reason)
+            return None
+
+
+def build_pptx_export(payload: dict, source_pdf_path: Path | None = None) -> bytes:
     """
     Clona la arquitectura PDF exportándola transparentemente a slides de PowerPoint (.pptx).
     Escala BBoxes usando EMU equivalentes para retener integridad sin importar el DPI de fondo.
+
+    El fondo se re-rasteriza del PDF original a `payload["export_dpi"]` cuando es
+    posible: el lienzo trabaja a 100 DPI por velocidad de OCR, y meter ese raster
+    en el PPTX es lo que hacía que todo lo no editado se viese blando frente al
+    texto editado, que sí es vectorial.
     """
     if not PPTX_AVAILABLE:
         raise RuntimeError("La librería python-pptx no se encuentra instalada.")
@@ -337,26 +411,31 @@ def build_pptx_export(payload: dict) -> bytes:
     assert MSO_ANCHOR is not None
 
     prs = Presentation()
-    
+    export_dpi = resolve_export_dpi(payload.get("export_dpi"))
+
     # 914400 EMUs dictaminan 1 pulgada geométrica según la Open XML Specification
     for page_index, page_data in enumerate(payload.get("pages", [])):
         b64_img = page_data.get("image_base64")
         if not b64_img:
             continue
             
-        img_bytes = _decode_image(b64_img)
-        img_stream = io.BytesIO(img_bytes)
-        
+        canvas_bytes = _decode_image(b64_img)
+
         # Invocamos el Slide Master "Vacio"
         blank_layout = prs.slide_layouts[6]
         slide = prs.slides.add_slide(blank_layout)
-        
-        # Calibrador Dinámico de Presentaciones atadas al Canvas
+
+        # Calibrador Dinámico de Presentaciones atadas al Canvas.
+        # OJO: las bboxes de los bloques viven en píxeles del lienzo, así que las
+        # ratios de mapeo se calculan SIEMPRE con el tamaño del lienzo. Si se
+        # tomaran del fondo de alta resolución, cada bloque de texto aterrizaría
+        # a una fracción de su posición real.
         from PIL import Image
-        img_pil = Image.open(img_stream)
-        width_px = float(img_pil.width)
-        height_px = float(img_pil.height)
-        img_stream.seek(0)
+        with Image.open(io.BytesIO(canvas_bytes)) as canvas_img:
+            width_px = float(canvas_img.width)
+            height_px = float(canvas_img.height)
+
+        img_stream = io.BytesIO(_high_res_background(page_data, source_pdf_path, export_dpi) or canvas_bytes)
             
         page_w_pt = float(page_data.get("page_width_pt") or width_px)
         page_h_pt = float(page_data.get("page_height_pt") or height_px)
@@ -485,7 +564,7 @@ def generate_export_zip(payload_dict: dict, source_pdf_path: Path | None = None)
             zipf.writestr("Presentacion_Editada_DBV.md", build_markdown_export(payload_dict, source_pdf_path))
 
         if export_pptx and PPTX_AVAILABLE:
-            pptx_bytes = build_pptx_export(payload_dict)
+            pptx_bytes = build_pptx_export(payload_dict, source_pdf_path)
             zipf.writestr("Presentacion_Editada_DBV.pptx", pptx_bytes)
             
     return zip_path, temp_dir
