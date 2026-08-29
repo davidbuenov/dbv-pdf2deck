@@ -8,6 +8,27 @@ static BACKEND_PORT: OnceLock<u16> = OnceLock::new();
 
 struct BackendProcess(Mutex<Option<CommandChild>>);
 
+/// Indica si el binario en ejecución se instaló como paquete MSIX (Microsoft
+/// Store), detectado porque esas instalaciones siempre viven bajo
+/// `...\WindowsApps\...`. Sirve para ocultar ahí la interfaz del actualizador:
+/// los paquetes de tienda se actualizan por la Store, y descargar y ejecutar el
+/// instalador NSIS dentro de ese sandbox fallaría o crearía una segunda
+/// instalación desconectada de la primera.
+#[tauri::command]
+fn is_packaged_app() -> bool {
+    std::env::current_exe()
+        .map(|path| {
+            path.components().any(|component| {
+                component
+                    .as_os_str()
+                    .to_str()
+                    .map(|segment| segment.eq_ignore_ascii_case("WindowsApps"))
+                    .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false)
+}
+
 #[tauri::command]
 fn get_backend_port() -> Result<u16, String> {
     BACKEND_PORT
@@ -21,8 +42,13 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_process::init())
         .manage(BackendProcess(Mutex::new(None)))
         .setup(|app| {
+            #[cfg(desktop)]
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
+
             let listener = TcpListener::bind("127.0.0.1:0")
                 .map_err(|error| format!("No se pudo reservar puerto para el backend: {error}"))?;
             let port = listener
@@ -48,7 +74,7 @@ pub fn run() {
                 .map_err(|_| "No se pudo guardar el proceso del backend".to_string())? = Some(child);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_backend_port])
+        .invoke_handler(tauri::generate_handler![get_backend_port, is_packaged_app])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {

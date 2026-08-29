@@ -113,6 +113,106 @@ function mountAboutModal() {
     return close;
 }
 
+// ─── Actualizaciones ─────────────────────────────────────────────────────────
+/**
+ * Escribe la etiqueta de un botón de la barra sin tocar su icono SVG.
+ * @param {HTMLElement} btn Botón con estructura `<svg>` + `<span class="btn-txt">`.
+ * @param {string} text Texto visible.
+ */
+function setBtnText(btn, text) {
+    const slot = btn.querySelector(".btn-txt");
+    if (slot) slot.textContent = text;
+    else btn.textContent = text;
+}
+
+/**
+ * Cablea el bloque «Buscar actualizaciones» del modal Acerca de.
+ *
+ * Solo aparece en el canal self-hosted (GitHub Releases). En navegador no hay
+ * nada que actualizar, y en una instalación desde tienda las actualizaciones
+ * las gestiona la propia tienda: descargar y ejecutar el instalador NSIS
+ * dentro de ese sandbox fallaría o crearía una segunda instalación paralela.
+ */
+async function mountUpdater() {
+    const wrap = $("about-update");
+    const btn = $("btn-check-update");
+    const status = $("update-status");
+    if (!wrap || !btn || !status) return;
+    if (!tauriApi("updater.check") || !tauriApi("core.invoke")) return;
+
+    const setStatus = (text, available) => {
+        status.textContent = text;
+        status.classList.toggle("available", !!available);
+    };
+
+    let packaged = false;
+    try {
+        packaged = await window.__TAURI__.core.invoke("is_packaged_app");
+    } catch (err) {
+        console.warn("[DBV] No se pudo determinar el canal de instalación:", err);
+    }
+
+    wrap.hidden = false;
+    if (packaged) {
+        btn.hidden = true;
+        setStatus("Las actualizaciones las gestiona la tienda desde la que instalaste la app.", false);
+        return;
+    }
+
+    let pending = null;
+
+    const install = async () => {
+        btn.disabled = true;
+        setStatus("Descargando…", true);
+        try {
+            let total = 0;
+            let bajado = 0;
+            await pending.downloadAndInstall((evt) => {
+                if (evt.event === "Started") {
+                    total = evt.data.contentLength || 0;
+                } else if (evt.event === "Progress") {
+                    bajado += evt.data.chunkLength || 0;
+                    setStatus(total
+                        ? `Descargando… ${Math.round((bajado / total) * 100)} %`
+                        : "Descargando…", true);
+                } else if (evt.event === "Finished") {
+                    setStatus("Instalando…", true);
+                }
+            });
+            setStatus("Actualización instalada. Reiniciando…", true);
+            await window.__TAURI__.process.relaunch();
+        } catch (err) {
+            console.error("[DBV] Fallo al instalar la actualización:", err);
+            btn.disabled = false;
+            setStatus("No se pudo instalar la actualización. Descárgala desde GitHub.", false);
+        }
+    };
+
+    btn.onclick = async () => {
+        if (pending) {
+            install();
+            return;
+        }
+        btn.disabled = true;
+        setStatus("Buscando…", false);
+        try {
+            const update = await window.__TAURI__.updater.check();
+            btn.disabled = false;
+            if (!update) {
+                setStatus("Estás en la última versión.", false);
+                return;
+            }
+            pending = update;
+            setBtnText(btn, `Instalar la versión ${update.version}`);
+            setStatus("Hay una versión nueva disponible.", true);
+        } catch (err) {
+            console.error("[DBV] Fallo al buscar actualizaciones:", err);
+            btn.disabled = false;
+            setStatus("No se pudo comprobar si hay actualizaciones.", false);
+        }
+    };
+}
+
 // ─── Menú de exportación ─────────────────────────────────────────────────────
 function mountExportMenu() {
     const trigger = $("btn-export-menu");
@@ -227,6 +327,7 @@ if (runningInTauri) {
 const closeAbout = mountAboutModal();
 const closeExportMenu = mountExportMenu();
 mountAlwaysOnTop();
+mountUpdater();
 paintRuntimeMode();
 
 // Escape cierra lo que esté abierto, sin pisar los atajos del editor.

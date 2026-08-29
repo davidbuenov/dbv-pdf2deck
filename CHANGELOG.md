@@ -11,6 +11,15 @@ y el proyecto adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 > Los cambios en desarrollo aparecerán aquí antes de ser publicados.
 
+- Se añade **auto-actualización** por GitHub Releases con `tauri-plugin-updater`: botón «Buscar
+  actualizaciones» en el modal Acerca de, con progreso de descarga y reinicio automático al terminar.
+  Los artefactos van firmados con la clave minisign del proyecto.
+- Se detecta la instalación desde tienda (`is_packaged_app()`, por la ruta `WindowsApps` del MSIX) para
+  ocultar ahí el botón de actualizar: esos paquetes los actualiza la tienda, y ejecutar el instalador
+  NSIS dentro de ese sandbox crearía una segunda instalación paralela.
+- Los tres workflows de release firman los artefactos de actualización y publican el `latest.json`
+  acumulado de las tres plataformas en la misma Release.
+
 - Se rediseña el shell de escritorio: la cabecera de marketing y la «ribbon» de secciones dan paso a
   una barra superior nativa de 48 px con las herramientas dentro, iconografía SVG de trazo en lugar de
   emojis, barra de estado inferior y scrollbars tematizadas. El lienzo pasa a ocupar la ventana completa

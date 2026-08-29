@@ -1,10 +1,17 @@
 name: Release macOS
 
-# Construye el .dmg y el .app para macOS (sin firmar ni notarizar) y los
-# adjunta como borrador de GitHub Release en cada tag vX.Y.Z. Ver
-# dbv-specs-ops/docs/NATIVE_APPS_RELEASE_CI.md §8 sobre distribución sin
-# firma como estrategia legítima, y su checklist de Gatekeeper para el
-# usuario final.
+# Construye el .dmg y el .app para macOS, firma los artefactos de
+# auto-actualización con la clave minisign del proyecto y lo adjunta todo como
+# borrador de GitHub Release en cada tag vX.Y.Z.
+#
+# SIN firma de código Apple ni notarización: el usuario verá el aviso de
+# Gatekeeper (clic derecho → Abrir, o `xattr -cr` sobre el .app). Es una
+# decisión consciente —ver dbv-specs-ops/docs/NATIVE_APPS_RELEASE_CI.md §8—,
+# distinta de la firma minisign del updater, que sí está resuelta aquí.
+#
+# Secretos necesarios en el repositorio:
+#   TAURI_SIGNING_PRIVATE_KEY           clave privada minisign (contenido, no ruta)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  su contraseña (cadena vacía si no tiene)
 #
 # Build universal (--target universal-apple-darwin): el runner macos-latest
 # es Apple Silicon, así que sin esto el binario no arrancaría en un Mac Intel
@@ -72,10 +79,16 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Firma minisign de los artefactos de auto-actualización. Sin estas dos
+          # variables el build FALLA (no las omite en silencio) porque
+          # bundle.createUpdaterArtifacts está activo — ver
+          # dbv-specs-ops/docs/NATIVE_APPS_RELEASE_CI.md §6.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           args: --target universal-apple-darwin
           tagName: ${{ steps.version.outputs.tag }}
           releaseName: ${{ steps.version.outputs.tag }}
           releaseDraft: ${{ steps.draft.outputs.value }}
           prerelease: false
-          includeUpdaterJson: false
+          includeUpdaterJson: true

@@ -184,6 +184,53 @@ De `docs_david/TASKS.md`, para no perder el rastro de lo que ya funciona:
 
 ---
 
+## 🔄 Auto-actualización y canales de distribución
+
+Configurado el 2026-08-29. Canal self-hosted por GitHub Releases con
+`tauri-plugin-updater`; las tiendas gestionan sus propias actualizaciones.
+
+- **Clave de firma minisign** generada para el proyecto. La pública vive en
+  `src-tauri/tauri.conf.json` → `plugins.updater.pubkey`. La privada está en
+  `~/.tauri/dbv-pdf2deck.key` (fuera del repo, sin contraseña) y **hay que
+  respaldarla**: si se pierde, ninguna instalación existente podrá volver a
+  auto-actualizarse nunca; habría que publicar una clave nueva y pedir a todo
+  el mundo que reinstale a mano.
+- **Secretos que faltan por dar de alta en GitHub** (Settings → Secrets and
+  variables → Actions):
+  - `TAURI_SIGNING_PRIVATE_KEY` — el **contenido** del fichero `.key`, no la ruta.
+  - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — cadena vacía.
+  Sin ellos, los tres workflows de release fallan al construir.
+- **`latest.json` lo genera CI**, no se mantiene a mano: `includeUpdaterJson: true`
+  en los tres workflows lo escribe y lo acumula en la misma Release borrador,
+  con las tres plataformas dentro.
+- **Qué se auto-actualiza por canal**: NSIS (Windows) y AppImage (Linux) sí; el
+  `.deb` lo gestiona el gestor de paquetes; el `.dmg` de macOS se actualiza vía
+  el `.app.tar.gz` firmado. Las instalaciones desde tienda quedan fuera: el
+  comando `is_packaged_app()` de `src-tauri/src/lib.rs` detecta la ruta
+  `...\WindowsApps\...` del MSIX y oculta el botón, porque ejecutar el
+  instalador NSIS dentro de ese sandbox crearía una segunda instalación
+  paralela y desconectada.
+
+### Pendiente para las tiendas
+
+- [ ] Dar de alta los dos secretos de firma y **lanzar un tag de prueba** para
+      verificar el ciclo completo: build → `latest.json` → botón «Buscar
+      actualizaciones» encontrando la versión nueva.
+- [ ] **Empaquetado MSIX** para Microsoft Store. Es la vía barata: la tienda
+      firma el paquete tras certificación, sin comprar certificado. `Identity.Name`
+      y `Publisher` tienen que coincidir **exactamente** con lo reservado en el
+      Partner Center (§7 de `MARKETPLACE_PUBLISHING.md`).
+- [ ] **Mac App Store**: exige certificado propio (Apple Developer, 99 $/año) y
+      revisión manual estricta. Decidir si compensa.
+- [ ] ⚠️ **El tamaño del sidecar es el bloqueo real de las tiendas.** `torch` +
+      CUDA congelados con PyInstaller son 2–5 GB, muy por encima de lo que una
+      tienda acepta de buen grado. La estrategia ya decidida —instalador base
+      pequeño + asistente de primer arranque que provisiona el entorno de OCR—
+      **no está construida todavía**, y es prerrequisito de cualquier envío a
+      tienda, no pulido posterior.
+
+---
+
 ## 🧹 Deuda técnica — detectada en la revisión `/simplify` del 2026-08-29
 
 Encontrada al revisar el rediseño del shell, pero **anterior a él y fuera de su alcance**. Ninguna
@@ -225,6 +272,12 @@ rompe nada hoy; se dejan anotadas para no volver a descubrirlas.
 Arranque:   .\start_dev.bat  (desde la raíz)
 Python:     backend/venv/Scripts/python.exe
 Compilar:   backend/venv/Scripts/python.exe -m py_compile <archivo>
+
+OJO en builds locales: bundle.createUpdaterArtifacts está activo, así que
+`npx tauri build` FALLA sin las variables de firma (no las omite en silencio).
+Antes de compilar en local:
+  $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content -Raw "$HOME\.tauri\dbv-pdf2deck.key"
+  $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
 
 DPI de renderizado:  100  — fijado en endpoints.py:189 (OJO: el default de
                      pdf_renderer.py es 150; manda la llamada del endpoint)

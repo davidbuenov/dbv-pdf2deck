@@ -1,8 +1,16 @@
 name: Release Linux
 
-# Construye los paquetes .deb y .AppImage para Linux y los adjunta como
-# borrador de GitHub Release en cada tag vX.Y.Z. Sin firma ni auto-
-# actualización — ver dbv-specs-ops/docs/NATIVE_APPS_RELEASE_CI.md §8/§6.
+# Construye los paquetes .deb y .AppImage para Linux, firma los artefactos de
+# auto-actualización con la clave minisign del proyecto y lo adjunta todo como
+# borrador de GitHub Release en cada tag vX.Y.Z.
+#
+# Solo el .AppImage es auto-actualizable: el .deb lo gestiona el gestor de
+# paquetes del sistema, no este updater. Sin firma de paquete —ver
+# dbv-specs-ops/docs/NATIVE_APPS_RELEASE_CI.md §8.
+#
+# Secretos necesarios en el repositorio:
+#   TAURI_SIGNING_PRIVATE_KEY           clave privada minisign (contenido, no ruta)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  su contraseña (cadena vacía si no tiene)
 #
 # .deb registra la asociación de tipo de archivo de forma declarativa
 # (bundle.fileAssociations); .AppImage NO se integra ni asocia archivos
@@ -74,9 +82,15 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Firma minisign de los artefactos de auto-actualización. Sin estas dos
+          # variables el build FALLA (no las omite en silencio) porque
+          # bundle.createUpdaterArtifacts está activo — ver
+          # dbv-specs-ops/docs/NATIVE_APPS_RELEASE_CI.md §6.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ steps.version.outputs.tag }}
           releaseName: ${{ steps.version.outputs.tag }}
           releaseDraft: ${{ steps.draft.outputs.value }}
           prerelease: false
-          includeUpdaterJson: false
+          includeUpdaterJson: true

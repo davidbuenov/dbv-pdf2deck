@@ -1,10 +1,18 @@
 name: Release Windows
 
-# Construye el instalador NSIS de Windows y lo adjunta como borrador de GitHub
-# Release en cada tag vX.Y.Z. Sin firma de código ni auto-actualización — ver
-# dbv-specs-ops/docs/NATIVE_APPS_RELEASE_CI.md §8 sobre por qué eso es un
-# punto de partida legítimo, y §6 sobre cómo evolucionar hacia firma/updater
-# más adelante sin romper este workflow.
+# Construye el instalador NSIS de Windows, firma los artefactos de
+# auto-actualización con la clave minisign del proyecto y lo adjunta todo como
+# borrador de GitHub Release en cada tag vX.Y.Z, junto con el latest.json que
+# consume tauri-plugin-updater.
+#
+# SIN firma de código Authenticode: el usuario verá el aviso de SmartScreen
+# ("Más información" → "Ejecutar de todas formas"). Es una decisión consciente
+# —ver dbv-specs-ops/docs/NATIVE_APPS_RELEASE_CI.md §8—, distinta de la firma
+# minisign del updater, que sí está resuelta aquí.
+#
+# Secretos necesarios en el repositorio:
+#   TAURI_SIGNING_PRIVATE_KEY           clave privada minisign (contenido, no ruta)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  su contraseña (cadena vacía si no tiene)
 
 on:
   push:
@@ -66,9 +74,15 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Firma minisign de los artefactos de auto-actualización. Sin estas dos
+          # variables el build FALLA (no las omite en silencio) porque
+          # bundle.createUpdaterArtifacts está activo — ver
+          # dbv-specs-ops/docs/NATIVE_APPS_RELEASE_CI.md §6.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ steps.version.outputs.tag }}
           releaseName: ${{ steps.version.outputs.tag }}
           releaseDraft: ${{ steps.draft.outputs.value }}
           prerelease: false
-          includeUpdaterJson: false
+          includeUpdaterJson: true
