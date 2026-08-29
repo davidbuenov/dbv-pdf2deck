@@ -6,43 +6,63 @@
 // =============================================================================
 /**
  * @fileoverview Chrome de escritorio: barra superior, chincheta (always-on-top),
- * modal «Acerca de», menú de exportación y barra de estado.
- *
- * Este módulo es el dueño de la barra: el motor de canvas describe su estado
- * (`setGate`, `setPage`) y aquí se decide cómo se pinta. Todo degrada solo en
- * navegador: lo que no existe fuera de Tauri no llega a mostrarse.
+ * selector de idioma (i18n), modal «Acerca de», menú de exportación y barra de estado.
  */
 
 (() => {
 
-// Espejo de la versión declarada en package.json, src-tauri/tauri.conf.json y
-// src-tauri/Cargo.toml. En escritorio la sobreescribe la que reporta Tauri.
 const APP_VERSION = "1.5.0";
 
-// Una sola fuente de verdad para la detección de entorno: api.js la calcula y
-// la publica, y este módulo se carga después.
 const runningInTauri = !!window.dbvApi?.runningInTauri;
-const runtimeLabel = runningInTauri ? "Escritorio (Tauri v2)" : "Navegador web";
-
 const $ = (id) => document.getElementById(id);
 
-/**
- * Resuelve una API de Tauri por su ruta, comprobando cada tramo.
- * `window.__TAURI__` existiendo no garantiza que el plugin concreto esté
- * inyectado, y acceder a un tramo ausente lanza antes de que haya promesa
- * que capturar.
- * @param {string} path Ruta separada por puntos, p. ej. "opener.openUrl".
- * @returns {*} La API pedida, o null si no está disponible.
- */
+function getRuntimeLabel() {
+    const isEn = window.DBV_I18N?.getLang?.() === "en";
+    if (runningInTauri) {
+        return isEn ? "Desktop (Tauri v2)" : "Escritorio (Tauri v2)";
+    }
+    return isEn ? "Web Browser" : "Navegador web";
+}
+
 function tauriApi(path) {
     if (!runningInTauri) return null;
     return path.split(".").reduce((obj, key) => obj?.[key], window.__TAURI__) ?? null;
 }
 
+// ─── Selector de idioma ──────────────────────────────────────────────────────
+function mountLangToggle() {
+    const btn = $("btn-lang-toggle");
+    const indicator = $("lang-indicator");
+    if (!btn) return;
+
+    const updateIndicator = () => {
+        const lang = window.DBV_I18N?.getLang?.() || "es";
+        if (indicator) indicator.textContent = lang === "es" ? "EN" : "ES";
+        btn.title = lang === "es"
+            ? "Switch to English / Cambiar a inglés"
+            : "Cambiar a español / Switch to Spanish";
+    };
+
+    btn.onclick = () => {
+        window.DBV_I18N?.toggleLang?.();
+        updateIndicator();
+    };
+
+    document.addEventListener("dbv-lang-changed", () => {
+        updateIndicator();
+        paintRuntimeMode();
+        const curDoc = $("doc-name");
+        if (curDoc && (curDoc.textContent === "Sin documento" || curDoc.textContent === "No document")) {
+            curDoc.textContent = window.DBV_I18N?.t("toolbar.noDoc") || "Sin documento";
+        }
+    });
+
+    updateIndicator();
+}
+
 // ─── Chincheta: mantener la ventana encima del resto ─────────────────────────
 function mountAlwaysOnTop() {
     const btn = $("btn-always-on-top");
-    // En navegador no existe el concepto: el botón se queda oculto.
     if (!btn || !tauriApi("window.getCurrentWindow")) return;
     btn.hidden = false;
 
@@ -51,9 +71,10 @@ function mountAlwaysOnTop() {
         try {
             await window.__TAURI__.window.getCurrentWindow().setAlwaysOnTop(pinned);
             btn.classList.toggle("active", pinned);
+            const isEn = window.DBV_I18N?.getLang?.() === "en";
             btn.title = pinned
-                ? "Ventana fijada encima — clic para soltarla"
-                : "Fijar la ventana encima del resto";
+                ? (isEn ? "Window pinned on top — click to unpin" : "Ventana fijada encima — clic para soltarla")
+                : (isEn ? "Keep window on top" : "Fijar la ventana encima del resto");
         } catch (err) {
             console.error("[DBV] No se pudo cambiar always-on-top:", err);
         }
@@ -92,9 +113,6 @@ function mountAboutModal() {
     if (btnClose) btnClose.onclick = close;
     if (backdrop) backdrop.onclick = close;
 
-    // En escritorio los enlaces salen al navegador del sistema en vez de
-    // navegar dentro de la propia webview. Si el plugin no está, se deja el
-    // comportamiento normal del enlace en vez de matarlo con preventDefault().
     if (tauriApi("opener.openUrl")) {
         modal.querySelectorAll(".about-links a").forEach((link) => {
             link.addEventListener("click", (evt) => {
@@ -114,25 +132,12 @@ function mountAboutModal() {
 }
 
 // ─── Actualizaciones ─────────────────────────────────────────────────────────
-/**
- * Escribe la etiqueta de un botón de la barra sin tocar su icono SVG.
- * @param {HTMLElement} btn Botón con estructura `<svg>` + `<span class="btn-txt">`.
- * @param {string} text Texto visible.
- */
 function setBtnText(btn, text) {
     const slot = btn.querySelector(".btn-txt");
     if (slot) slot.textContent = text;
     else btn.textContent = text;
 }
 
-/**
- * Cablea el bloque «Buscar actualizaciones» del modal Acerca de.
- *
- * Solo aparece en el canal self-hosted (GitHub Releases). En navegador no hay
- * nada que actualizar, y en una instalación desde tienda las actualizaciones
- * las gestiona la propia tienda: descargar y ejecutar el instalador NSIS
- * dentro de ese sandbox fallaría o crearía una segunda instalación paralela.
- */
 async function mountUpdater() {
     const wrap = $("about-update");
     const btn = $("btn-check-update");
@@ -155,7 +160,7 @@ async function mountUpdater() {
     wrap.hidden = false;
     if (packaged) {
         btn.hidden = true;
-        setStatus("Las actualizaciones las gestiona la tienda desde la que instalaste la app.", false);
+        setStatus(window.DBV_I18N?.t("about.store") || "Las actualizaciones las gestiona la tienda.", false);
         return;
     }
 
@@ -163,7 +168,7 @@ async function mountUpdater() {
 
     const install = async () => {
         btn.disabled = true;
-        setStatus("Descargando…", true);
+        setStatus(window.DBV_I18N?.t("about.downloading") || "Descargando…", true);
         try {
             let total = 0;
             let bajado = 0;
@@ -172,19 +177,18 @@ async function mountUpdater() {
                     total = evt.data.contentLength || 0;
                 } else if (evt.event === "Progress") {
                     bajado += evt.data.chunkLength || 0;
-                    setStatus(total
-                        ? `Descargando… ${Math.round((bajado / total) * 100)} %`
-                        : "Descargando…", true);
+                    const pct = total ? ` ${Math.round((bajado / total) * 100)} %` : "";
+                    setStatus(`${window.DBV_I18N?.t("about.downloading") || "Descargando…"}${pct}`, true);
                 } else if (evt.event === "Finished") {
-                    setStatus("Instalando…", true);
+                    setStatus(window.DBV_I18N?.t("about.installed") || "Instalada. Reiniciando…", true);
                 }
             });
-            setStatus("Actualización instalada. Reiniciando…", true);
+            setStatus(window.DBV_I18N?.t("about.installed") || "Actualización instalada. Reiniciando…", true);
             await window.__TAURI__.process.relaunch();
         } catch (err) {
             console.error("[DBV] Fallo al instalar la actualización:", err);
             btn.disabled = false;
-            setStatus("No se pudo instalar la actualización. Descárgala desde GitHub.", false);
+            setStatus(window.DBV_I18N?.t("about.installFailed") || "No se pudo instalar la actualización.", false);
         }
     };
 
@@ -194,21 +198,21 @@ async function mountUpdater() {
             return;
         }
         btn.disabled = true;
-        setStatus("Buscando…", false);
+        setStatus(window.DBV_I18N?.t("about.checking") || "Buscando…", false);
         try {
             const update = await window.__TAURI__.updater.check();
             btn.disabled = false;
             if (!update) {
-                setStatus("Estás en la última versión.", false);
+                setStatus(window.DBV_I18N?.t("about.upToDate") || "Estás en la última versión.", false);
                 return;
             }
             pending = update;
-            setBtnText(btn, `Instalar la versión ${update.version}`);
-            setStatus("Hay una versión nueva disponible.", true);
+            setBtnText(btn, window.DBV_I18N?.t("about.updateBtn") || `Actualizar (${update.version})`);
+            setStatus(window.DBV_I18N?.t("about.available", { version: update.version }) || `Nueva versión ${update.version} disponible.`, true);
         } catch (err) {
             console.error("[DBV] Fallo al buscar actualizaciones:", err);
             btn.disabled = false;
-            setStatus("No se pudo comprobar si hay actualizaciones.", false);
+            setStatus(window.DBV_I18N?.t("about.checkFailed") || "No se pudo comprobar si hay actualizaciones.", false);
         }
     };
 }
@@ -231,7 +235,6 @@ function mountExportMenu() {
         trigger.setAttribute("aria-expanded", String(willOpen));
     };
 
-    // Clic fuera del menú lo cierra; dentro, no.
     menu.addEventListener("click", (evt) => evt.stopPropagation());
     document.addEventListener("click", () => {
         if (!menu.hidden) close();
@@ -241,10 +244,6 @@ function mountExportMenu() {
 }
 
 // ─── Barra de estado ─────────────────────────────────────────────────────────
-/**
- * Refleja si el backend local responde.
- * @param {boolean} online Si el motor OCR ha contestado al chequeo de salud.
- */
 function setEngineStatus(online) {
     const dot = $("engine-dot");
     const text = $("engine-status");
@@ -253,30 +252,24 @@ function setEngineStatus(online) {
         dot.classList.toggle("offline", !online);
     }
     if (text) {
+        const isEn = window.DBV_I18N?.getLang?.() === "en";
         text.textContent = online
-            ? "Motor OCR local activo · sin conexión a la nube"
-            : "Esperando al motor OCR local…";
+            ? (isEn ? "Local OCR engine active · no cloud connection" : "Motor OCR local activo · sin conexión a la nube")
+            : (isEn ? "Waiting for local OCR engine…" : "Esperando al motor OCR local…");
     }
 }
 
 async function paintRuntimeMode() {
     const version = await resolveVersion();
     const versionLabel = $("about-version");
-    if (versionLabel) versionLabel.textContent = `Versión ${version}`;
+    if (versionLabel) {
+        versionLabel.textContent = window.DBV_I18N?.t("about.version", { version }) || `Versión ${version}`;
+    }
     const slot = $("runtime-mode");
-    if (slot) slot.textContent = `${runtimeLabel} · v${version}`;
+    if (slot) slot.textContent = `${getRuntimeLabel()} · v${version}`;
 }
 
 // ─── Compuertas declarativas de la barra ─────────────────────────────────────
-/**
- * Habilita o deshabilita todo lo que depende de una condición del editor.
- * Los controles se marcan en el HTML con `data-needs-<nombre>`, y los que
- * además deben resaltarse cuando la condición se cumple, con
- * `data-active-on="<nombre>"`. Así añadir una herramienta contextual nueva no
- * obliga a tocar JavaScript.
- * @param {string} name Nombre de la compuerta: "doc", "eraser"…
- * @param {boolean} enabled Si la condición se cumple.
- */
 function setGate(name, enabled) {
     document.querySelectorAll(`[data-needs-${name}]`).forEach((el) => {
         el.disabled = !enabled;
@@ -287,18 +280,11 @@ function setGate(name, enabled) {
 }
 
 // ─── Estado del documento ────────────────────────────────────────────────────
-/**
- * Proyecta en la barra si hay un documento cargado. Es una proyección de
- * estado, no un evento: llamarla con `false` devuelve la barra a su reposo,
- * que es lo que hace falta al abrir un segundo documento.
- * @param {boolean} loaded Si hay un documento listo para editar.
- * @param {string} [fileName] Nombre del archivo abierto.
- * @param {number} [totalPages] Total de páginas del documento.
- */
 function setDocumentState(loaded, fileName, totalPages) {
     const name = $("doc-name");
     if (name) {
-        name.textContent = loaded ? (fileName || "Documento sin nombre") : "Sin documento";
+        const noDoc = window.DBV_I18N?.t("toolbar.noDoc") || "Sin documento";
+        name.textContent = loaded ? (fileName || "Documento") : noDoc;
         name.title = loaded ? (fileName || "") : "";
     }
     setGate("doc", loaded);
@@ -326,11 +312,11 @@ if (runningInTauri) {
 
 const closeAbout = mountAboutModal();
 const closeExportMenu = mountExportMenu();
+mountLangToggle();
 mountAlwaysOnTop();
 mountUpdater();
 paintRuntimeMode();
 
-// Escape cierra lo que esté abierto, sin pisar los atajos del editor.
 document.addEventListener("keydown", (evt) => {
     if (evt.key !== "Escape") return;
     const modal = $("about-modal");
@@ -345,7 +331,6 @@ document.addEventListener("keydown", (evt) => {
 });
 
 window.dbvShell = {
-    runtimeLabel,
     setGate,
     setDocumentState,
     setPage,

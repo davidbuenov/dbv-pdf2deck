@@ -28,13 +28,17 @@ let ingestStartedAtMs = 0;
 let ingestTotalPages = null;
 let ingestProcessedPages = new Set();
 
+function _t(key, vars) {
+    return window.DBV_I18N ? window.DBV_I18N.t(key, vars) : key;
+}
+
 /**
  * Emite logs a la GUI emulando terminal nativa de consola para UX.
  * @param {string} msg Mensaje técnico representativo.
  */
 function terminalPrint(msg) {
     if (logBox && logBox.hidden) logBox.hidden = false;
-    const time = new Date().toLocaleTimeString('es-ES', {hour12: false});
+    const time = new Date().toLocaleTimeString('es-ES', { hour12: false });
     if (logConsole) {
         logConsole.textContent += `[${time}] ${msg}\n`;
         logConsole.scrollTop = logConsole.scrollHeight;
@@ -96,10 +100,10 @@ function startIngestHeartbeat() {
             const remaining = Math.max(0, total - processed);
             const etaSec = remaining * avgSecPerPage;
             terminalPrint(
-                `⏳ Procesando... ${elapsed} transcurridos · ${processed}/${total} páginas · ETA ~${formatDurationMMSS(etaSec)}`
+                `⏳ Procesando... ${elapsed} · ${processed}/${total} págs · ETA ~${formatDurationMMSS(etaSec)}`
             );
         } else {
-            terminalPrint(`⏳ Procesando... ${elapsed} transcurridos.`);
+            terminalPrint(`⏳ Procesando... ${elapsed}`);
         }
     }, 8000);
 }
@@ -122,11 +126,9 @@ async function connectToServerLogs(docId) {
         }
     };
     
-    serverEventSource.onerror = (event) => {
-        if (serverEventSource.readyState === EventSource.CLOSED) {
-            terminalPrint("✓ Conexión SSE cerrada (procesamiento completado o timeout).");
-        } else {
-            terminalPrint("⚠ Error en la conexión SSE, reintentando...");
+    serverEventSource.onerror = () => {
+        if (serverEventSource && serverEventSource.readyState === EventSource.CLOSED) {
+            terminalPrint("✓ Conexión SSE cerrada.");
         }
         closeServerEventSource();
     };
@@ -139,6 +141,15 @@ function isSupportedUpload(file) {
     const name = (file.name || "").toLowerCase();
     const ext = name.includes(".") ? `.${name.split(".").pop()}` : "";
     return SUPPORTED_UPLOAD_EXT.has(ext);
+}
+
+function resetToUploadPanel() {
+    const uploadPanel = document.getElementById("upload-panel");
+    const workspaceGate = document.getElementById("editor-workspace");
+    if (uploadPanel) uploadPanel.hidden = false;
+    if (workspaceGate) workspaceGate.hidden = true;
+    window.dbvShell?.setDocumentState(false);
+    if (fileInput) fileInput.value = "";
 }
 
 // ---------- INTERFAZ DRAG & DROP ----------
@@ -162,13 +173,18 @@ if (dropzone) {
             if (isSupportedUpload(file)) {
                 ingestPdfAndTriggerOcr(file);
             } else {
-                terminalPrint("❌ Error fatal: Sólo se admiten .PDF, .PNG, .JPG/.JPEG o .WEBP");
+                terminalPrint("❌ Sólo se admiten .PDF, .PNG, .JPG/.JPEG o .WEBP");
             }
         }
     };
 }
 
-// La barra superior permite cambiar de documento sin volver al panel de carga.
+// Botones de la barra superior
+const btnNewFile = document.getElementById("btn-new-file");
+if (btnNewFile) {
+    btnNewFile.onclick = () => resetToUploadPanel();
+}
+
 const btnOpenFile = document.getElementById("btn-open-file");
 if (btnOpenFile) {
     btnOpenFile.onclick = () => fileInput && fileInput.click();
@@ -183,6 +199,23 @@ if (fileInput) {
     });
 }
 
+// Atajos globales de teclado
+window.addEventListener("keydown", (e) => {
+    const isCtrl = e.ctrlKey || e.metaKey;
+    const activeEl = document.activeElement;
+    const isTyping = activeEl?.isContentEditable || activeEl?.tagName === "INPUT" || activeEl?.tagName === "TEXTAREA";
+    
+    if (isCtrl && !isTyping) {
+        if (e.key.toLowerCase() === "n") {
+            e.preventDefault();
+            resetToUploadPanel();
+        } else if (e.key.toLowerCase() === "o") {
+            e.preventDefault();
+            if (fileInput) fileInput.click();
+        }
+    }
+});
+
 /**
  * Transporta el archivo binario al Backend REST y orquesta la respuesta reactiva al Canvas.
  * @param {File} pdfBlob El archivo del usuario.
@@ -195,22 +228,21 @@ async function ingestPdfAndTriggerOcr(pdfBlob) {
     // Abrir SSE ANTES del POST para ver progreso en tiempo real desde la primera página.
     await connectToServerLogs(clientDocId);
 
-    // Volvemos al panel de carga: si ya había un documento abierto, el progreso
-    // de este tiene que verse igual que la primera vez.
     const uploadPanel = document.getElementById("upload-panel");
     const workspaceGate = document.getElementById("editor-workspace");
     if (uploadPanel) uploadPanel.hidden = false;
     if (workspaceGate) workspaceGate.hidden = true;
     window.dbvShell?.setDocumentState(false);
 
-    terminalPrint(`Iniciando Uplink. Transfiriendo archivo '${pdfBlob.name}' (Size: ${(pdfBlob.size / 1024 / 1024).toFixed(2)} MB)...`);
-    terminalPrint("Red conectada. Esperando a motor Offline OCR (Modo Turbo GPU si está disponible)...");
+    const sizeMb = (pdfBlob.size / 1024 / 1024).toFixed(2);
+    terminalPrint(_t('terminal.uplink', { name: pdfBlob.name, size: sizeMb }));
+    terminalPrint(_t('terminal.waitingOcr'));
     startIngestHeartbeat();
 
     try {
         const businessLogicResponse = await window.dbvApi.processDocument(pdfBlob, clientDocId);
-        terminalPrint(`¡ÉXITO TOTAL! ${businessLogicResponse.total_pages} páginas recibidas desde el microservicio backend.`);
-        terminalPrint(`Módulos cargados exitosamente. Construyendo UI HTML5 Canvas e instanciando motor Exportador...`);
+        terminalPrint(_t('terminal.success', { total: businessLogicResponse.total_pages }));
+        terminalPrint(_t('terminal.building'));
         stopIngestHeartbeat();
         
         if (workspaceGate) workspaceGate.hidden = false;
@@ -218,33 +250,68 @@ async function ingestPdfAndTriggerOcr(pdfBlob) {
         window.dbvShell?.setDocumentState(true, pdfBlob.name, businessLogicResponse.total_pages);
 
         const canvasFeature = window.dbvCanvasEngine;
+        console.log("[DBV DIAG main.js] canvasFeature?", !!canvasFeature, "pages:", businessLogicResponse.pages?.length);
         if (!canvasFeature) {
-            terminalPrint("[FATAL] El motor Canvas no está disponible.");
+            terminalPrint(_t('terminal.fatalCanvas'));
             return;
         }
         if (businessLogicResponse.pages && businessLogicResponse.pages.length > 0) {
+            console.log("[DBV DIAG main.js] Calling initPagination...");
             canvasFeature.initPagination(businessLogicResponse);
+            console.log("[DBV DIAG main.js] initPagination done, calling mountKeyboardShortcuts...");
             canvasFeature.mountKeyboardShortcuts();
+            console.log("[DBV DIAG main.js] mountKeyboardShortcuts done.");
         }
     } catch (e) {
         stopIngestHeartbeat();
         closeServerEventSource();
-        terminalPrint(`❌ ABORTO DE OPERACIÓN HTTP: ${e.message}`);
+        console.error("[DBV DIAG main.js] CAUGHT ERROR:", e);
+        terminalPrint(_t('terminal.abort', { msg: e.message }));
     }
 }
 
-// Comprobación inicial de disponibilidad de motor backend
-window.addEventListener("DOMContentLoaded", async () => {
-    try {
-        const health = await window.dbvApi.checkHealth();
-        if (health && health.status === "running") {
-            terminalPrint(`✓ Motor backend conectado. Modo: ${window.dbvShell?.runtimeLabel ?? "desconocido"}`);
-            window.dbvShell?.setEngineStatus(true);
+// Monitor de disponibilidad de motor backend con reintentos para arranque en frío
+async function startBackendHealthMonitor() {
+    let connected = false;
+    let attempts = 0;
+    const maxFastAttempts = 40;
+
+    async function poll() {
+        try {
+            const health = await window.dbvApi.checkHealth();
+            if (health && health.status === "running") {
+                if (!connected) {
+                    connected = true;
+                    const isEn = window.DBV_I18N?.getLang?.() === "en";
+                    terminalPrint(isEn
+                        ? "✓ Local OCR backend connected."
+                        : "✓ Motor OCR local conectado y listo.");
+                    window.dbvShell?.setEngineStatus(true);
+                }
+                setTimeout(poll, 10000);
+                return;
+            }
+        } catch (_) {
+            // Continúa en espera
         }
-    } catch (err) {
-        // En arranque en frío el backend puede tardar unos milisegundos en responder
-        console.log("[DBV] Esperando inicio de backend...");
-        window.dbvShell?.setEngineStatus(false);
+
+        attempts++;
+        if (connected) {
+            connected = false;
+            window.dbvShell?.setEngineStatus(false);
+        }
+
+        if (attempts <= maxFastAttempts) {
+            setTimeout(poll, 1000);
+        } else {
+            setTimeout(poll, 5000);
+        }
     }
+
+    poll();
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+    startBackendHealthMonitor();
 });
 })();

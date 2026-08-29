@@ -14,72 +14,75 @@
     <!-- Política de Seguridad: Conexión a backend local en cualquier puerto asignado -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: blob:;">
     
-    <link rel="stylesheet" href="styles.css?v=2">
+    <link rel="stylesheet" href="styles.css?v=3">
     
-    <script src="api.js?v=1" defer></script>
-    <script src="canvas_engine.js?v=6" defer></script>
-    <script src="main.js?v=5" defer></script>
-    <script src="desktop_shell.js?v=1" defer></script>
+    <script src="i18n.js?v=1"></script>
+    <script src="api.js?v=3" defer></script>
+    <script src="canvas_engine.js?v=9" defer></script>
+    <script src="main.js?v=7" defer></script>
+    <script src="desktop_shell.js?v=3" defer></script>
 </head>
 <body>
     <!-- ══ BARRA SUPERIOR NATIVA ═══════════════════════════════════════════ -->
     <header id="app-bar" role="banner">
         <div class="bar-group">
             <svg class="app-mark" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H12l4 4v3M4 5.5V18a2 2 0 0 0 2 2h5M15 20l3-3 3 3M18 17v5"></path></svg>
-            <h1 class="app-name">DBV PDF2Deck</h1>
+            <h1 class="app-name" data-i18n="app.name">DBV PDF2Deck</h1>
             <span class="bar-sep"></span>
-            <button id="btn-open-file" class="bar-btn" title="Abrir un PDF o una imagen"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v5h5M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path></svg></button>
-            <span id="doc-name" class="doc-name">Sin documento</span>
+            <button id="btn-new-file" class="bar-btn labeled" data-i18n-title="toolbar.newFileTitle" title="Cerrar documento actual y volver al panel de carga (Ctrl+N)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg><span class="btn-txt" data-i18n="toolbar.newFile">Nuevo</span></button>
+            <button id="btn-open-file" class="bar-btn labeled" data-i18n-title="toolbar.openFileTitle" title="Abrir un PDF o una imagen (Ctrl+O)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v5h5M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path></svg><span class="btn-txt" data-i18n="toolbar.openFile">Abrir</span></button>
+            <span id="doc-name" class="doc-name" data-i18n="toolbar.noDoc">Sin documento</span>
             <span id="doc-badge" class="doc-badge" hidden></span>
         </div>
 
         <div class="bar-group" role="toolbar" aria-label="Herramientas de edición">
             <button id="btn-add-box" class="bar-btn labeled" data-needs-doc disabled
-                    title="Añadir un cuadro de texto nuevo"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5h16v2M12 5v14M9 19h6"></path></svg><span class="btn-txt">Texto</span></button>
+                    data-i18n-title="toolbar.addBoxTitle" title="Añadir un cuadro de texto nuevo"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5h16v2M12 5v14M9 19h6"></path></svg><span class="btn-txt" data-i18n="toolbar.addBox">Texto</span></button>
             <button id="btn-add-eraser" class="bar-btn labeled eraser-btn" data-needs-doc data-active-on="eraser" disabled
-                    title="Coloca una goma sobre el documento para borrar fondos, marcas de agua o logos"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 20.5 3.9 15.9a2 2 0 0 1 0-2.8l9.2-9.2a2 2 0 0 1 2.8 0l4.6 4.6a2 2 0 0 1 0 2.8l-8 8H21M8.5 20.5H13M9 9l6.5 6.5"></path></svg><span class="btn-txt">Goma</span></button>
+                    data-i18n-title="toolbar.eraserTitle" title="Coloca una goma sobre el documento para borrar fondos, marcas de agua o logos"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 20.5 3.9 15.9a2 2 0 0 1 0-2.8l9.2-9.2a2 2 0 0 1 2.8 0l4.6 4.6a2 2 0 0 1 0 2.8l-8 8H21M8.5 20.5H13M9 9l6.5 6.5"></path></svg><span class="btn-txt" data-i18n="toolbar.eraser">Goma</span></button>
             <span class="bar-sep"></span>
             <button id="btn-eraser-clean" class="bar-btn labeled wand" data-needs-eraser disabled
-                    title="Borra lo que hay bajo la goma (púlsalo varias veces para refinar)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4V2M15 10V8M12.5 6h-2M19.5 6h-2M13.2 8.2 11.8 9.6M18.2 3.2l-1.4 1.4M13.2 3.8 11.8 2.4M3 21 14 10"></path></svg><span class="btn-txt">Borrar zona</span></button>
+                    data-i18n-title="toolbar.eraserCleanTitle" title="Borra lo que hay bajo la goma (púlsalo varias veces para refinar)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4V2M15 10V8M12.5 6h-2M19.5 6h-2M13.2 8.2 11.8 9.6M18.2 3.2l-1.4 1.4M13.2 3.8 11.8 2.4M3 21 14 10"></path></svg><span class="btn-txt" data-i18n="toolbar.eraserClean">Borrar zona</span></button>
             <button id="btn-eraser-delete" class="bar-btn" data-needs-eraser disabled
-                    title="Retirar la goma del documento"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+                    data-i18n-title="toolbar.eraserDeleteTitle" title="Retirar la goma del documento"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
             <span class="bar-sep"></span>
-            <button id="btn-undo" class="bar-btn" data-needs-doc disabled title="Deshacer (Ctrl+Z)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5M4 9h9a6 6 0 0 1 0 12h-4"></path></svg></button>
-            <button id="btn-redo" class="bar-btn" data-needs-doc disabled title="Rehacer (Ctrl+Y)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5M20 9h-9a6 6 0 0 0 0 12h4"></path></svg></button>
+            <button id="btn-undo" class="bar-btn" data-needs-doc disabled data-i18n-title="toolbar.undo" title="Deshacer (Ctrl+Z)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5M4 9h9a6 6 0 0 1 0 12h-4"></path></svg></button>
+            <button id="btn-redo" class="bar-btn" data-needs-doc disabled data-i18n-title="toolbar.redo" title="Rehacer (Ctrl+Y)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5M20 9h-9a6 6 0 0 0 0 12h4"></path></svg></button>
             <span class="bar-sep"></span>
             <button id="btn-clean-bg" class="bar-btn labeled" data-needs-doc disabled
-                    title="Limpia el fondo de todos los cuadros de la página actual"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.7 6.7 8a7.5 7.5 0 1 0 10.6 0z"></path></svg><span class="btn-txt">Limpiar Fondo</span></button>
+                    data-i18n-title="toolbar.cleanBgTitle" title="Limpia el fondo de todos los cuadros de la página actual"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.7 6.7 8a7.5 7.5 0 1 0 10.6 0z"></path></svg><span class="btn-txt" data-i18n="toolbar.cleanBg">Limpiar Fondo</span></button>
         </div>
 
         <div class="bar-group">
             <div class="menu-wrap">
                 <button id="btn-export-menu" class="bar-btn labeled primary" data-needs-doc disabled
                         aria-haspopup="true" aria-expanded="false" aria-controls="export-menu"
-                        title="Elegir formatos y descargar"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"></path></svg><span class="btn-txt">Exportar</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+                        data-i18n-title="toolbar.exportMenuTitle" title="Elegir formatos y descargar"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"></path></svg><span class="btn-txt" data-i18n="toolbar.exportMenu">Exportar</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
                 <div id="export-menu" class="popover" role="menu" hidden>
-                    <p class="popover-label">Qué se exporta</p>
+                    <p class="popover-label" data-i18n="export.title">Qué se exporta</p>
                     <select id="export-mode-select" title="Modo de exportación">
-                        <option value="only_modified">Solo los bloques modificados</option>
-                        <option value="all_editable">Todo el documento editable</option>
+                        <option value="only_modified" data-i18n="export.onlyModified">Solo los bloques modificados</option>
+                        <option value="all_editable" data-i18n="export.allEditable">Todo el documento editable</option>
                     </select>
                     <div class="popover-sep"></div>
-                    <p class="popover-label">Formatos</p>
+                    <p class="popover-label" data-i18n="export.formats">Formatos</p>
                     <div class="format-list">
                         <label><input type="checkbox" id="export-pptx" checked> <span>.pptx</span></label>
                         <label><input type="checkbox" id="export-pdf" checked> <span>.pdf</span></label>
                         <label><input type="checkbox" id="export-md" checked> <span>.md</span></label>
                     </div>
-                    <button id="btn-export" class="bar-btn labeled primary block"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"></path></svg><span class="btn-txt">Descargar</span></button>
+                    <button id="btn-export" class="bar-btn labeled primary block"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"></path></svg><span class="btn-txt" data-i18n="export.download">Descargar</span></button>
                 </div>
             </div>
             <span class="bar-sep"></span>
+            <button id="btn-lang-toggle" class="bar-btn labeled" data-i18n-title="toolbar.langToggleTitle" title="Switch language"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path><path d="M2 12h20"></path></svg><span id="lang-indicator" class="btn-txt">EN</span></button>
             <button id="btn-always-on-top" class="bar-btn" hidden
-                    title="Fijar la ventana encima del resto"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5M8.5 12.5L5 14l7-7 7 7-3.5-1.5M8.5 12.5L7 6l5-2 5 2-1.5 6.5M8.5 12.5h7"></path></svg></button>
-            <button id="btn-about" class="bar-btn" title="Acerca de DBV PDF2Deck"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></button>
+                    data-i18n-title="toolbar.alwaysOnTop" title="Fijar la ventana encima del resto"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5M8.5 12.5L5 14l7-7 7 7-3.5-1.5M8.5 12.5L7 6l5-2 5 2-1.5 6.5M8.5 12.5h7"></path></svg></button>
+            <button id="btn-about" class="bar-btn" data-i18n-title="toolbar.about" title="Acerca de DBV PDF2Deck"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></button>
         </div>
     </header>
 
-    <p id="editor-hint" class="editor-hint" hidden>
+    <p id="editor-hint" class="editor-hint" data-i18n-html="hint.editor" hidden>
         Doble clic en un bloque para editarlo en sitio &middot; <strong>Ctrl</strong>+clic para
         selección múltiple &middot; arrastra sobre una zona vacía para seleccionar por rectángulo.
     </p>
@@ -87,21 +90,21 @@
     <main role="main" id="app-main">
         <!-- Panel de carga (Drag &amp; Drop + consola de progreso) -->
         <section id="upload-panel" aria-labelledby="upload-heading">
-            <h2 id="upload-heading">Carga tu documento o imagen</h2>
-            <p>Arrastra una exportación de NotebookLM, una transparencia o una infografía (PDF/PNG/JPG/WEBP).
+            <h2 id="upload-heading" data-i18n="upload.heading">Carga tu documento o imagen</h2>
+            <p data-i18n-html="upload.desc">Arrastra una exportación de NotebookLM, una transparencia o una infografía (PDF/PNG/JPG/WEBP).
                Todo el procesamiento ocurre <strong>100% offline</strong> en tu ordenador.</p>
 
             <div id="dropzone" class="dropzone-area" role="button" tabindex="0" aria-label="Área para soltar archivos PDF o imágenes">
                 <input type="file" id="pdf-upload" accept="application/pdf,image/png,image/jpeg,image/webp" hidden>
                 <div class="dropzone-content">
                     <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v5h5M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path></svg>
-                    <h3>Arrastra aquí tu PDF o tu imagen</h3>
-                    <p>o haz clic para explorar &mdash; PDF &middot; PNG &middot; JPG &middot; WEBP</p>
+                    <h3 data-i18n="upload.dropzoneTitle">Arrastra aquí tu PDF o tu imagen</h3>
+                    <p data-i18n-html="upload.dropzoneSubtitle">o haz clic para explorar &mdash; PDF &middot; PNG &middot; JPG &middot; WEBP</p>
                 </div>
             </div>
 
             <div class="console-box" id="log-container" hidden>
-                <div class="console-header">Progreso</div>
+                <div class="console-header" data-i18n="upload.progressHeader">Progreso</div>
                 <pre id="log-console"></pre>
             </div>
 
@@ -118,16 +121,16 @@
 
                 <div class="canvas-overlays">
                     <div id="canvas-zoom-controls" class="pill-control">
-                        <button id="btn-zoom-out" class="bar-btn" title="Reducir"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM8 11h6"></path></svg></button>
+                        <button id="btn-zoom-out" class="bar-btn" data-i18n-title="zoom.out" title="Reducir"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM8 11h6"></path></svg></button>
                         <span id="zoom-indicator">100%</span>
-                        <button id="btn-zoom-in" class="bar-btn" title="Ampliar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM8 11h6M11 8v6"></path></svg></button>
-                        <button id="btn-zoom-reset" class="bar-btn" title="Ajustar a la ventana"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg></button>
+                        <button id="btn-zoom-in" class="bar-btn" data-i18n-title="zoom.in" title="Ampliar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM8 11h6M11 8v6"></path></svg></button>
+                        <button id="btn-zoom-reset" class="bar-btn" data-i18n-title="zoom.reset" title="Ajustar a la ventana"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg></button>
                     </div>
 
                     <div id="pagination-controls" class="pill-control" hidden>
-                        <button id="btn-prev" class="bar-btn" title="Página anterior"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 19l-7-7 7-7"></path></svg></button>
+                        <button id="btn-prev" class="bar-btn" data-i18n-title="page.prev" title="Página anterior"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 19l-7-7 7-7"></path></svg></button>
                         <span id="page-indicator">Página 1</span>
-                        <button id="btn-next" class="bar-btn" title="Página siguiente"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg></button>
+                        <button id="btn-next" class="bar-btn" data-i18n-title="page.next" title="Página siguiente"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg></button>
                     </div>
                 </div>
             </div>
@@ -147,7 +150,7 @@
 
         <!-- Barra flotante de herramientas de diseño JS -->
         <div id="floating-toolbar" class="floating-toolbar glass-panel" hidden>
-            <h4>✏️ Edición Visual</h4>
+            <h4 data-i18n="floating.title">✏️ Edición Visual</h4>
             
             <div id="tb-warning-non-native" hidden>
                 ⚠️ Editando zona rasterizada. Posible pérdida de nitidez nativa.
@@ -158,151 +161,131 @@
                 <textarea id="tb-text" rows="3" placeholder="Inserta aquí tu texto..."></textarea>
             </div>
             
-            <div class="toolbar-row">
-                <div class="toolbar-field" style="flex-grow: 1;">
-                    <label>Tipografía</label>
-                    <select id="tb-font">
-                        <option value="system-ui">San Francisco / UI</option>
-                        <option value="Arial">Arial</option>
-                        <option value="Times New Roman">Times New</option>
-                        <option value="Courier New">Courier</option>
-                        <option value="Georgia">Georgia</option>
-                        <option value="Trebuchet MS">Trebuchet</option>
-                    </select>
+            <div class="toolbar-grid">
+                <div class="toolbar-field">
+                    <label data-i18n="floating.textColor">Color Texto</label>
+                    <input type="color" id="tb-text-color" value="#000000">
                 </div>
                 <div class="toolbar-field">
-                    <label>Tamaño</label>
-                    <input type="number" id="tb-size" min="8" max="200" step="0.01" value="16" style="width: 110px; padding: 0.4rem 0.2rem 0.4rem 0.6rem;">
-                </div>
-            </div>
-            
-            <div class="toolbar-row">
-                <div class="toolbar-field">
-                    <label>Estilos</label>
-                    <div style="display: flex; gap: 15px; background: rgba(0,0,0,0.2); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-                        <label class="checkbox-modern"><input type="checkbox" id="tb-bold"> Negrita</label>
-                        <label class="checkbox-modern"><input type="checkbox" id="tb-italic"> Cursiva</label>
-                    </div>
+                    <label data-i18n="floating.bgColor">Color Fondo</label>
+                    <input type="color" id="tb-bg-color" value="#ffffff">
                 </div>
             </div>
 
-            <div class="toolbar-row">
+            <div class="toolbar-grid">
                 <div class="toolbar-field">
-                    <label>Alineación</label>
-                    <div class="align-group">
-                        <button class="align-btn active" id="tb-align-left" title="Izquierda">
-                            <svg width="16" height="12" viewBox="0 0 16 12" fill="none"><line x1="0" y1="1.5" x2="16" y2="1.5" stroke="currentColor" stroke-width="1.8"/><line x1="0" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1.8"/><line x1="0" y1="10.5" x2="13" y2="10.5" stroke="currentColor" stroke-width="1.8"/></svg>
-                        </button>
-                        <button class="align-btn" id="tb-align-center" title="Centrar">
-                            <svg width="16" height="12" viewBox="0 0 16 12" fill="none"><line x1="0" y1="1.5" x2="16" y2="1.5" stroke="currentColor" stroke-width="1.8"/><line x1="3" y1="6" x2="13" y2="6" stroke="currentColor" stroke-width="1.8"/><line x1="1.5" y1="10.5" x2="14.5" y2="10.5" stroke="currentColor" stroke-width="1.8"/></svg>
-                        </button>
-                        <button class="align-btn" id="tb-align-right" title="Derecha">
-                            <svg width="16" height="12" viewBox="0 0 16 12" fill="none"><line x1="0" y1="1.5" x2="16" y2="1.5" stroke="currentColor" stroke-width="1.8"/><line x1="6" y1="6" x2="16" y2="6" stroke="currentColor" stroke-width="1.8"/><line x1="3" y1="10.5" x2="16" y2="10.5" stroke="currentColor" stroke-width="1.8"/></svg>
-                        </button>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="toolbar-row">
-                <div class="toolbar-field">
-                    <label>Letra</label>
-                    <div class="color-picker-group">
-                        <input type="color" id="tb-color" value="#000000">
-                    </div>
+                    <label data-i18n="floating.fontSize">Tamaño</label>
+                    <input type="number" id="tb-font-size" min="8" max="120" value="16">
                 </div>
                 <div class="toolbar-field">
-                    <label>Fondo</label>
-                    <div class="color-picker-group">
-                        <input type="color" id="tb-bg" value="#ffffff">
-                        <div style="width: 1px; height: 20px; background: rgba(255,255,255,0.2); margin: 0 4px;"></div>
-                        <label class="checkbox-modern" style="margin: 0;" title="Fondo Transparente"><input type="checkbox" id="tb-bg-transparent"> Transparente</label>
-                    </div>
+                    <label data-i18n="floating.lineSpacing">Interlineado</label>
+                    <input type="number" id="tb-line-spacing" min="0.8" max="3.0" step="0.05" value="1.15">
                 </div>
             </div>
-            
-            <div class="tb-actions">
-               <button id="tb-close" style="background:#475569; color:white; width: 40px;" title="Descartar Cambios">✖</button>
-                    <button id="tb-delete" style="background:#b91c1c; color:white; width: 40px;" title="Eliminar bloque">🗑</button>
-               <button id="tb-save" style="background:linear-gradient(135deg, #10b981, #059669); color:white; flex-grow:1;" title="Guardar Bloque">✓ Confirmar Edición</button>
-            </div>
-        </div>
 
-        <!-- Barra flotante de multi-selección (Ctrl+Click en ≥2 bloques) -->
-        <div id="multi-toolbar" class="floating-toolbar glass-panel" hidden>
-            <h4>🔗 Multi-selección</h4>
-            <p id="mt-count" style="font-size:0.85rem; color:#f97316; margin:0.25rem 0 0.75rem; font-weight:600;">2 bloques seleccionados</p>
+            <div class="toolbar-field">
+                <label data-i18n="floating.bgTransparent">Transparencia</label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="tb-bg-transparent"> <span data-i18n="floating.bgTransparent">Fondo transparente</span>
+                </label>
+            </div>
 
             <div class="toolbar-field">
-                <label>Tamaño de fuente común</label>
-                <input type="number" id="mt-size" min="8" max="200" step="0.5" value="16"
-                       style="width:100px; padding:0.4rem 0.2rem 0.4rem 0.6rem;">
+                <label>Tipografía</label>
+                <select id="tb-font-family">
+                    <option value="system-ui">System Default</option>
+                    <option value="Arial">Arial</option>
+                    <option value="Helvetica">Helvetica</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Courier New">Courier New</option>
+                    <option value="Georgia">Georgia</option>
+                    <option value="Verdana">Verdana</option>
+                </select>
             </div>
 
-            <div class="toolbar-row">
-                <div class="toolbar-field">
-                    <label>Letra</label>
-                    <div class="color-picker-group">
-                        <input type="color" id="mt-color" value="#000000">
-                    </div>
-                </div>
-                <div class="toolbar-field">
-                    <label>Fondo</label>
-                    <div class="color-picker-group">
-                        <input type="color" id="mt-bg" value="#ffffff">
-                        <div style="width:1px;height:20px;background:rgba(255,255,255,0.2);margin:0 4px;"></div>
-                        <label class="checkbox-modern" style="margin:0;" title="Fondo Transparente">
-                            <input type="checkbox" id="mt-bg-transparent"> Transp.
-                        </label>
-                    </div>
-                </div>
-            </div>
-
-            <div class="toolbar-row">
-                <div class="toolbar-field">
-                    <label>Alineación</label>
-                    <div class="align-group">
-                        <button class="align-btn active" id="mt-align-left" title="Izquierda">
-                            <svg width="16" height="12" viewBox="0 0 16 12" fill="none"><line x1="0" y1="1.5" x2="16" y2="1.5" stroke="currentColor" stroke-width="1.8"/><line x1="0" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1.8"/><line x1="0" y1="10.5" x2="13" y2="10.5" stroke="currentColor" stroke-width="1.8"/></svg>
-                        </button>
-                        <button class="align-btn" id="mt-align-center" title="Centrar">
-                            <svg width="16" height="12" viewBox="0 0 16 12" fill="none"><line x1="0" y1="1.5" x2="16" y2="1.5" stroke="currentColor" stroke-width="1.8"/><line x1="3" y1="6" x2="13" y2="6" stroke="currentColor" stroke-width="1.8"/><line x1="1.5" y1="10.5" x2="14.5" y2="10.5" stroke="currentColor" stroke-width="1.8"/></svg>
-                        </button>
-                        <button class="align-btn" id="mt-align-right" title="Derecha">
-                            <svg width="16" height="12" viewBox="0 0 16 12" fill="none"><line x1="0" y1="1.5" x2="16" y2="1.5" stroke="currentColor" stroke-width="1.8"/><line x1="6" y1="6" x2="16" y2="6" stroke="currentColor" stroke-width="1.8"/><line x1="3" y1="10.5" x2="16" y2="10.5" stroke="currentColor" stroke-width="1.8"/></svg>
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="tb-actions" style="gap:0.4rem; flex-wrap:wrap;">
-                <button id="mt-close"
-                        style="background:#475569; color:white; width:40px;"
-                        title="Cerrar y deseleccionar todo">✖</button>
-                <button id="mt-equalize"
-                        style="background:linear-gradient(135deg,#f59e0b,#d97706); color:white; flex-grow:1;"
-                        title="Aplicar todos los estilos mostrados a los bloques seleccionados">⚖️ Igualar Estilos</button>
-                <button id="mt-merge"
-                        style="background:linear-gradient(135deg,#6366f1,#4f46e5); color:white; flex-grow:1;"
-                        title="Fusionar todos los bloques seleccionados en uno solo">🔗 Fusionar</button>
+            <div class="toolbar-actions">
+                <button type="button" id="tb-btn-delete" class="btn btn-danger" data-i18n="floating.delete">Eliminar bloque</button>
             </div>
         </div>
 
-        <div id="inline-toolbar" class="inline-toolbar" hidden>
-            <select id="ib-font" title="Fuente">
-                <option value="system-ui">UI</option>
+        <!-- Barra flotante de multi-selección (2 o más bloques seleccionados) -->
+        <div id="multi-toolbar" class="floating-toolbar glass-panel multi-toolbar" hidden>
+            <h4 id="mtb-title" data-i18n="multi.title">📐 Multi-Selección</h4>
+
+            <!-- Alineación -->
+            <div class="toolbar-field">
+                <label>Alineación</label>
+                <div class="multi-btn-row">
+                    <button type="button" id="mtb-align-left" class="btn btn-tool" title="Alinear a la izquierda" data-i18n-title="multi.alignLeft"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 2h2v12H2zm4 2h8v2H6zm0 6h6v2H6z" fill="currentColor"/></svg></button>
+                    <button type="button" id="mtb-align-hcenter" class="btn btn-tool" title="Centrar horizontalmente" data-i18n-title="multi.alignHCenter"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M7 1h2v14H7zM3 4h10v2H3zm2 6h6v2H5z" fill="currentColor"/></svg></button>
+                    <button type="button" id="mtb-align-right" class="btn btn-tool" title="Alinear a la derecha" data-i18n-title="multi.alignRight"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M12 2h2v12h-2zm-8 2h8v2H4zm2 6h6v2H6z" fill="currentColor"/></svg></button>
+                    <button type="button" id="mtb-align-top" class="btn btn-tool" title="Alinear arriba" data-i18n-title="multi.alignTop"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 2h12v2H2zm2 4h2v8H4zm6 0h2v6h-2z" fill="currentColor"/></svg></button>
+                    <button type="button" id="mtb-align-vcenter" class="btn btn-tool" title="Centrar verticalmente" data-i18n-title="multi.alignVCenter"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M1 7h14v2H1zm3-4h2v10H4zm6 2h2v6h-2z" fill="currentColor"/></svg></button>
+                    <button type="button" id="mtb-align-bottom" class="btn btn-tool" title="Alinear abajo" data-i18n-title="multi.alignBottom"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 12h12v2H2zm2-8h2v8H4zm6 2h2v6h-2z" fill="currentColor"/></svg></button>
+                </div>
+            </div>
+
+            <!-- Distribución y Dimensiones -->
+            <div class="toolbar-field">
+                <label>Distribución</label>
+                <div class="multi-btn-row">
+                    <button type="button" id="mtb-distrib-h" class="btn btn-tool" title="Distribuir horizontalmente" data-i18n-title="multi.distribH">⇄ Dist. H</button>
+                    <button type="button" id="mtb-distrib-v" class="btn btn-tool" title="Distribuir verticalmente" data-i18n-title="multi.distribV">⇅ Dist. V</button>
+                    <button type="button" id="mtb-same-width" class="btn btn-tool" title="Igualar ancho al más ancho" data-i18n-title="multi.sameWidth">↔ Ancho</button>
+                    <button type="button" id="mtb-same-height" class="btn btn-tool" title="Igualar alto al más alto" data-i18n-title="multi.sameHeight">↕ Alto</button>
+                </div>
+            </div>
+
+            <!-- Estilo masivo -->
+            <div class="toolbar-grid">
+                <div class="toolbar-field">
+                    <label data-i18n="multi.textColor">Color Texto</label>
+                    <input type="color" id="mtb-text-color" value="#000000">
+                </div>
+                <div class="toolbar-field">
+                    <label data-i18n="multi.bgColor">Color Fondo</label>
+                    <input type="color" id="mtb-bg-color" value="#ffffff">
+                </div>
+            </div>
+
+            <div class="toolbar-field">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="mtb-bg-transparent"> <span data-i18n="multi.bgTransparent">Fondo transparente masivo</span>
+                </label>
+            </div>
+
+            <!-- Acciones -->
+            <div class="toolbar-actions">
+                <button type="button" id="mtb-btn-delete" class="btn btn-danger" data-i18n="multi.delete">Eliminar seleccionados</button>
+            </div>
+        </div>
+
+        <!-- Overlay de edición inline: contenedor para editor enriquecido -->
+        <div id="inline-editor-container" class="inline-editor-container" hidden>
+            <div id="inline-block-editor" class="inline-block-editor" contenteditable="true" spellcheck="false" role="textbox" aria-multiline="true"></div>
+        </div>
+
+        <!-- Barra flotante contextual inline (Word-like) -->
+        <div id="inline-block-toolbar" class="inline-block-toolbar glass-panel" hidden role="toolbar" aria-label="Formato de bloque">
+            <select id="ib-font" class="ib-select" title="Tipografía">
+                <option value="system-ui">System Default</option>
                 <option value="Arial">Arial</option>
-                <option value="Times New Roman">Times</option>
-                <option value="Courier New">Courier</option>
+                <option value="Helvetica">Helvetica</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Courier New">Courier New</option>
                 <option value="Georgia">Georgia</option>
-                <option value="Trebuchet MS">Trebuchet</option>
+                <option value="Verdana">Verdana</option>
+                <option value="Trebuchet MS">Trebuchet MS</option>
+                <option value="Impact">Impact</option>
+                <option value="Comic Sans MS">Comic Sans MS</option>
             </select>
-            <input id="ib-size" type="number" min="8" max="200" step="0.5" value="16" title="Tamano">
+            <input id="ib-size" class="ib-number" type="number" min="8" max="120" value="16" title="Tamaño fuente (px)">
             <label class="ib-dim-wrap" title="Interlineado">LH <input id="ib-line-spacing" class="ib-dim" type="number" min="0.8" max="3.0" step="0.05" value="1.15"></label>
             <label class="ib-dim-wrap" title="Ancho del bloque">W <input id="ib-width" class="ib-dim" type="number" min="20" max="4000" step="1" value="120"></label>
             <label class="ib-dim-wrap" title="Alto del bloque">H <input id="ib-height" class="ib-dim" type="number" min="20" max="4000" step="1" value="40"></label>
-            <button id="ib-bold" type="button" class="ib-btn" title="Negrita" aria-label="Negrita"><strong>B</strong></button>
-            <button id="ib-italic" type="button" class="ib-btn" title="Cursiva" aria-label="Cursiva"><em>I</em></button>
-            <button id="ib-underline" type="button" class="ib-btn" title="Subrayado" aria-label="Subrayado"><span style="text-decoration: underline;">U</span></button>
+            <button id="ib-bold" type="button" class="ib-btn" title="Negrita (Ctrl+B)" aria-label="Negrita"><strong>B</strong></button>
+            <button id="ib-italic" type="button" class="ib-btn" title="Cursiva (Ctrl+I)" aria-label="Cursiva"><em>I</em></button>
+            <button id="ib-underline" type="button" class="ib-btn" title="Subrayado (Ctrl+U)" aria-label="Subrayado"><span style="text-decoration: underline;">U</span></button>
             <div class="ib-divider"></div>
             <label class="ib-color" title="Color texto"><input id="ib-color" type="color" value="#000000"></label>
             <label class="ib-color" title="Color fondo"><input id="ib-bg" type="color" value="#ffffff"></label>
@@ -340,15 +323,15 @@
     <div id="about-modal" class="modal-overlay" hidden>
         <div id="about-backdrop" class="modal-backdrop"></div>
         <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="about-title">
-            <button id="about-close" class="bar-btn modal-close" title="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+            <button id="about-close" class="bar-btn modal-close" data-i18n-title="about.close" title="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
             <div class="about-head">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H12l4 4v3M4 5.5V18a2 2 0 0 0 2 2h5M15 20l3-3 3 3M18 17v5"></path></svg>
                 <div>
-                    <h2 id="about-title">DBV PDF2Deck</h2>
-                    <p id="about-version">Versión &mdash;</p>
+                    <h2 id="about-title" data-i18n="about.title">DBV PDF2Deck</h2>
+                    <p id="about-version" data-i18n="about.versionPlaceholder">Versión &mdash;</p>
                 </div>
             </div>
-            <p class="about-desc">Convierte PDFs de solo imagen en presentaciones editables.
+            <p class="about-desc" data-i18n="about.desc">Convierte PDFs de solo imagen en presentaciones editables.
                OCR local, sin nube y sin suscripciones.</p>
             <div class="about-links">
                 <a href="https://davidbuenov.com" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3.6 9h16.8M3.6 15h16.8M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"></path></svg>davidbuenov.com</a>
@@ -357,10 +340,10 @@
                 <a href="https://www.linkedin.com/in/davidbueno/" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9"></path></svg>linkedin.com/in/davidbueno</a>
             </div>
             <div id="about-update" class="about-update" hidden>
-                <button id="btn-check-update" class="bar-btn labeled about-update-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11A8 8 0 0 0 6.3 5.7L4 8m0-4v4h4M4 13a8 8 0 0 0 13.7 5.3L20 16m0 4v-4h-4"></path></svg><span class="btn-txt">Buscar actualizaciones</span></button>
+                <button id="btn-check-update" class="bar-btn labeled about-update-btn"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11A8 8 0 0 0 6.3 5.7L4 8m0-4v4h4M4 13a8 8 0 0 0 13.7 5.3L20 16m0 4v-4h-4"></path></svg><span class="btn-txt" data-i18n="about.checkUpdate">Buscar actualizaciones</span></button>
                 <p id="update-status" class="about-update-status" role="status" aria-live="polite"></p>
             </div>
-            <p class="about-author">David Bueno Vallejo &middot; Licencia MIT</p>
+            <p class="about-author" data-i18n="about.authorLine">David Bueno Vallejo &middot; Licencia MIT</p>
         </div>
     </div>
 

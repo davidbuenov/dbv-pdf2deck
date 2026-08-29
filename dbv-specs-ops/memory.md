@@ -59,6 +59,28 @@
 - **2026-08-28 — Limpieza definitiva y erradicación de PyMuPDF.** Se eliminaron todos los cuerpos legacy inalcanzables en `pdf_renderer.py` y `exporter_engine.py`. El backend opera 100% libre de dependencias AGPL con `pypdfium2`, `reportlab` y `pypdf`.
 - **2026-08-28 — Sidecar target-specific y validación de Tauri v2.** Binario `dbv-pdf2deck-sidecar-x86_64-pc-windows-msvc.exe` compilado y ubicado en `src-tauri/binaries/`. `src-tauri/src/lib.rs` consume el sidecar con puerto dinámico y `cargo check` compila limpiamente sin errores ni warnings.
 - **2026-08-28 — Goma Mágica y Limpieza de Fondo Selectiva (OpenCV Telea Inpainting).** En lugar de limpiar forzosamente la página entera y obligar al usuario a reajustar textos intactos, el motor aplica inpainting exclusivamente sobre los cuadros seleccionados. Además, se creó la herramienta `🧹 Goma` (caja efímera redimensionable y desplazable) con soporte de ejecución reiterativa local sobre la misma área para refinar texturas. Los bloques de goma se sanitizan y filtran antes de cualquier exportación (PPTX/PDF/MD) para evitar shapes espurios.
+- **2026-08-29 — Conectividad de motor OCR en escritorio (CORS + Polling de Salud + Observabilidad de Sidecar).**
+  1. *CORS*: FastAPI restringía orígenes a `localhost:5500`, bloqueando a Tauri WebView2 (`http://tauri.localhost`). Se abrió `allow_origins=["*"]` en el backend local.
+  2. *Polling de salud*: El arranque de Python + PyTorch + EasyOCR toma varios segundos. Se sustituyó el chequeo único en `DOMContentLoaded` por un monitor de reintentos continuos (1s durante arranque, 10s en reposo) que conmuta dinámicamente el estado del motor a verde en `desktop_shell.js`.
+  3. *Sidecar vs Dev*: `src-tauri/src/lib.rs` implementa gestión dual (`BackendChild`): en modo desarrollo (`debug_assertions`) arranca directamente el `backend/venv` local sobre el puerto dinámico asignado sin necesidad de congelar binarios pesados en cada cambio; en producción (`release`) ejecuta el binario sidecar empaquetado. En ambos casos lee `stdout`/`stderr` asíncronamente y limpia el proceso al salir (`kill`).
+- **2026-08-29 — Dos fallos gemelos de «el frontend cree que ha hecho algo y no lo ha hecho».**
+  1. *Goma Mágica que resucitaba lo borrado.* `mountInteractionLayer()` captura la imagen de fondo en su
+     closure. «Borrar zona» actualizaba `page.image_base64` y repintaba una sola vez con una `Image` local,
+     dejando la capa de interacción apuntando a la imagen sucia: el primer `mousemove` del arrastre
+     repintaba el fondo antiguo y el borrado parecía deshacerse (los datos estaban bien; mentía el lienzo).
+     «Limpiar selección» nunca falló porque pasaba por `cycleViewEngine()`. Corregido usando también
+     `cycleViewEngine()`. **Deuda asumida a sabiendas**: eso vuelve a decodificar el PNG entero de la
+     página, agravando la deuda ya anotada en `task.md`; la solución definitiva sigue siendo subir
+     `{ctx, canvas, bgImage}` al ámbito del módulo para poder refrescar la imagen sin re-render completo.
+  2. *Exportar no guardaba nada.* El export usaba `<a download>` sobre una blob URL. WebView2 no tiene
+     gestor de descargas: dentro de Tauri ese clic se ignora **en silencio**, sin diálogo del sistema, sin
+     error y sin fichero. Es el mismo fallo que ya se sufrió en eer-studio. Corregido con
+     `tauri-plugin-dialog` (`dialog.save`) + el comando Rust `save_binary_file`, que escribe los bytes en
+     la ruta elegida; el contenido viaja en base64 porque el IPC serializa a JSON y un array de bytes
+     crudo triplicaría el mensaje. Se descartó `tauri-plugin-fs` para no abrir un scope de escritura `**`.
+  **Regla general**: toda API web de descarga o de sistema de ficheros hay que darla por muerta bajo Tauri
+  hasta demostrar lo contrario — falla sin excepción y sin ruido.
+
 - **[Posicionamiento de toolbars flotantes hijas del Canvas]**: Cualquier toolbar contextual flotante asociada a coordenadas de bloques de canvas debe insertarse dentro de `#canvas-wrapper` (que tiene posicionamiento relativo) y no en el `body`/`main`, para evitar desalineaciones con el zoom y scroll del lienzo.
 
 - **[El pack de OCR no es un extra para minorías]**: el README vende como caso de uso principal los PDFs de solo imagen y las infografías de IA — justo las rutas que pasan por OCR. Un instalador pequeño que deje al usuario sin la función que fue a buscar es peor que uno grande. El asistente de primer arranque es alcance obligatorio.

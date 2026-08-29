@@ -41,7 +41,10 @@ def _log_processing_step(doc_id: str, message: str) -> None:
     """Emite trazas legibles del progreso y las acumula en cola SSE para el cliente."""
     timestamp = datetime.now(timezone.utc).astimezone().strftime("%H:%M:%S")
     log_msg = f"[{timestamp}] {message}"
-    print(f"[PROCESS][{doc_id}] {message}", flush=True)
+    try:
+        print(f"[PROCESS][{doc_id}] {message}")
+    except OSError:
+        pass
     
     # Guardar en cola para SSE si existe
     if doc_id in LOG_QUEUES:
@@ -259,7 +262,10 @@ def process_document(file: UploadFile = File(...), doc_id: str | None = Form(Non
                                 ]
                             case Err(ocr_err):
                                 # Logs transparentes; el PDF se renderizará en blanco / sin texto
-                                print(f"[WARN] Inferencia OCR aborrtada en Pág {render.page_num}: {ocr_err}")
+                                try:
+                                    print(f"[WARN] Inferencia OCR abortada en Pág {render.page_num}: {ocr_err}")
+                                except OSError:
+                                    pass
                                 _log_processing_step(doc_id, f"Página {human_page_num}: OCR abortado. Motivo: {ocr_err}")
                                 
                     img_b64 = None

@@ -18,9 +18,15 @@
     como una goma de nata sobre el documento y sus acciones viven en la barra. Diseño previo aprobado en
     el lienzo `PDF2Deck Escritorio`. El modo web sigue intacto: lo único exclusivo de escritorio es la
     chincheta.
-* **Próximo paso**: **validar ejecutando** `npx tauri dev` (el rediseño está escrito y revisado, pero
-  todavía no se ha ejecutado la app real) y cerrar los criterios pendientes de la DoD de Experiencia de
-  Escritorio. Después, Fase 8 (`/ship` y release).
+  - **Auto-actualización cableada (2026-08-29)**: `tauri-plugin-updater` + clave minisign propia,
+    botón «Buscar actualizaciones» en Acerca de, `is_packaged_app()` para ocultarlo en instalaciones de
+    tienda. Detalle completo en «🔄 Auto-actualización y canales de distribución» más abajo — **sin
+    ejercitar todavía**: faltan los secretos en GitHub y un tag de prueba.
+  - **Corrección de Canvas en Blanco / ReferenceError `bindDualPage` y dimensiones `safeCanvas` (2026-08-29)**: Se eliminó el error tipográfico `bindDualPage` en `canvas_engine.js` que abortaba la inicialización de paginación antes de pintar el lienzo, y se asignaron dimensiones explícitas al clon del canvas para respetar el tamaño natural de la imagen en lugar del default de 300×150 px.
+  - **Internacionalización ES/EN implementada (2026-08-29)**: Creado `frontend/i18n.js` con el patrón probado de `dbv-md-reader` (Vanilla JS + IIFE + `data-i18n` + `window.DBV_I18N`), selector de idioma `EN | ES` en la barra superior y persistencia en `localStorage`.
+  - **Flujo Nuevo / Abrir Documento (2026-08-29)**: Botón «Nuevo» (`#btn-new-file` / `Ctrl+N`) para volver al panel de carga/drag & drop y botón «Abrir» (`#btn-open-file` / `Ctrl+O`) para abrir el selector de archivos del sistema directamente.
+* **Próximo paso — retomar aquí**: ver «📍 Snapshot de contexto — 2026-08-29, conversación sobre tiendas»
+  justo debajo del backlog de escritorio.
 
 ---
 
@@ -81,8 +87,9 @@ Procedimiento: `MIGRATION_PROMPT.md` de `dbv-tauri-starter`. Contexto y decision
   la incorporación del sidecar y el puerto dinámico en Fase 6.
 - [x] **Fase 6** — Sidecar Python (PyInstaller) + asistente de primer arranque para el entorno de OCR.
   Base preparada y ejecutada: binario target-specific `dbv-pdf2deck-sidecar-x86_64-pc-windows-msvc.exe`
-  construido en `src-tauri/binaries/`, `cargo check` verificado y superado con éxito. Detección y health check
-  en `frontend/api.js` y `frontend/main.js`.
+  construido en `src-tauri/binaries/`, `cargo check` verificado y superado con éxito. Detección, monitor de reintentos
+  de salud dinámico en `frontend/api.js` y `frontend/main.js`, CORS universal local en `backend/main.py` y streaming
+  de logs del sidecar en `src-tauri/src/lib.rs`.
 - [ ] **Fase 7** — Verificación ejecutando el binario real + DoD de Experiencia de Escritorio (6 criterios).
   Estado por criterio (§7 de `docs/NATIVE_DESKTOP_APPS.md`):
   - [ ] 1 · **Diálogos de archivo nativos**. Sigue usándose `<input type="file">` para abrir y el truco
@@ -216,18 +223,67 @@ Configurado el 2026-08-29. Canal self-hosted por GitHub Releases con
 - [ ] Dar de alta los dos secretos de firma y **lanzar un tag de prueba** para
       verificar el ciclo completo: build → `latest.json` → botón «Buscar
       actualizaciones» encontrando la versión nueva.
-- [ ] **Empaquetado MSIX** para Microsoft Store. Es la vía barata: la tienda
-      firma el paquete tras certificación, sin comprar certificado. `Identity.Name`
-      y `Publisher` tienen que coincidir **exactamente** con lo reservado en el
-      Partner Center (§7 de `MARKETPLACE_PUBLISHING.md`).
-- [ ] **Mac App Store**: exige certificado propio (Apple Developer, 99 $/año) y
-      revisión manual estricta. Decidir si compensa.
+- [ ] **Empaquetado MSIX** para Microsoft Store — decidido usar esta vía (ver snapshot debajo). La
+      tienda firma el paquete tras certificación, sin comprar certificado. `Identity.Name` y
+      `Publisher` tienen que coincidir **exactamente** con lo reservado en el Partner Center (§7 de
+      `MARKETPLACE_PUBLISHING.md`). Herramienta candidata: `@choochmeque/tauri-windows-bundle`, ya
+      validada en `dbv-md-reader` (`package.json` → script `tauri:windows:build`).
+- [x] **macOS: descartado Mac App Store.** El canal de macOS es **Uptodown**, igual que el resto del
+      portfolio — decisión del usuario en la conversación del 2026-08-29. Sin certificado Apple
+      Developer, sin notarización, sin revisión de tienda para esta plataforma.
 - [ ] ⚠️ **El tamaño del sidecar es el bloqueo real de las tiendas.** `torch` +
-      CUDA congelados con PyInstaller son 2–5 GB, muy por encima de lo que una
-      tienda acepta de buen grado. La estrategia ya decidida —instalador base
+      CUDA congelados con PyInstaller son 2–5 GB. La estrategia ya decidida —instalador base
       pequeño + asistente de primer arranque que provisiona el entorno de OCR—
       **no está construida todavía**, y es prerrequisito de cualquier envío a
-      tienda, no pulido posterior.
+      tienda, no pulido posterior. El tamaño en sí **no es el bloqueo de política**: el límite MSIX es
+      25 GB por paquete, muy por encima de lo que hace falta (verificado en la snapshot de abajo).
+
+---
+
+## 📍 Snapshot de contexto — 2026-08-29, conversación sobre tiendas
+
+**Retomar la conversación desde aquí.** Se investigó qué exige Microsoft Store para un paquete grande
+(2–5 GB por `torch`+CUDA) y se decidió la estrategia de envío, pero **no se ha implementado nada de
+empaquetado de tienda todavía** — el trabajo hecho en esta conversación es solo de investigación y
+decisión, más el cableado del updater (commit `e2f1627`, ya en el árbol).
+
+### Lo que se investigó (fuentes: Microsoft Learn, agosto 2026)
+
+- **El tamaño no es el bloqueo.** Límite MSIX: 25 GB por paquete o bundle. 2–5 GB entra sobrado.
+- **Dos rutas de envío a Microsoft Store, con un matiz importante para este proyecto:**
+  - **MSIX** (recomendada aquí): la Store re-firma el paquete tras certificar — no hace falta
+    certificado de pago. Sin restricción sobre que la app descargue componentes después de instalada.
+  - **EXE/MSI por URL directa** (política 10.2.9): exige Authenticode firmado con CA del Trusted Root
+    Program (coste recurrente), URL versionada que vosotros alojáis, y —la frase clave— *"el instalador
+    es autónomo y no es un stub/instalador web que descarga bits al ejecutarse"*. Esa cláusula apunta al
+    *instalador*, no a que la app ya instalada ofrezca un asistente de primer arranque — pero es una
+    línea difusa que MSIX evita por completo al no tener esa restricción.
+- **Por qué importa para vuestra estrategia ya decidida** (instalador base pequeño + asistente de
+  primer arranque que provisiona OCR): con MSIX, ese asistente es sin ambigüedad "funcionalidad de la
+  app", no "instalador que hace de stub". Con la ruta EXE/MSI, tendríais que defender esa distinción
+  ante certificación.
+- **Requisitos de certificación que os afectan directamente:**
+  - **10.2.4** — divulgar en la ficha de Partner Center que la app descarga el runtime de OCR tras
+    instalar.
+  - **10.3** — la app tiene que ser testable sin GPU CUDA (los certificadores probablemente no tengan
+    una). Ya resuelto de facto: `ocr_engine.py` importa `easyocr` en `try/except` y la app arranca sin
+    OCR.
+  - **10.4.2** — el asistente de descarga del runtime tiene que mostrar progreso real y no colgar la UI
+    ni la app si falla la red.
+- **macOS confirmado: Uptodown, no Mac App Store.** Sin certificado Apple Developer (99 $/año) ni
+  revisión de tienda para esta plataforma.
+
+### Próximos pasos, en orden
+
+1. **Bloqueante primero, y no es de tienda**: dar de alta `TAURI_SIGNING_PRIVATE_KEY` y
+   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` en GitHub Secrets (ver «🔄 Auto-actualización» arriba) y lanzar
+   un tag de prueba — sin esto, los tres workflows de release fallan al construir, con o sin tienda.
+2. **Construir el asistente de primer arranque** que provisiona el entorno de OCR — es prerrequisito de
+   cualquier envío a tienda, no pulido posterior, y hoy no existe.
+3. **Reservar identidad en el Partner Center** (`Identity.Name`, `Publisher`) — bloqueante para
+   scaffoldar el empaquetado MSIX; sin esos valores exactos el manifiesto no puede generarse.
+4. Empaquetar con `@choochmeque/tauri-windows-bundle` (o equivalente) siguiendo el patrón ya validado en
+   `dbv-md-reader`.
 
 ---
 
@@ -248,9 +304,10 @@ rompe nada hoy; se dejan anotadas para no volver a descubrirlas.
   fotograma, y `_handlePoints()` reserva un objeto y ocho arrays en cada `mousemove` de hover. Con muchos
   bloques marcados como modificados esto es presión de GC pura. Normalizar al recibir el payload y hacer
   las pruebas de impacto sin objetos intermedios.
-- **Añadir o quitar una goma dispara `cycleViewEngine()`**, que vuelve a decodificar el PNG de la página
-  entera para un cambio que solo necesita un repintado. Requiere subir `{ctx, canvas, bgImage}` al ámbito
-  del módulo.
+- **Añadir, quitar o aplicar una goma dispara `cycleViewEngine()`**, que vuelve a decodificar el PNG de la
+  página entera para un cambio que solo necesita un repintado. Requiere subir `{ctx, canvas, bgImage}` al
+  ámbito del módulo. Desde el 2026-08-29 «Borrar zona» también pasa por ahí: era la única forma de que la
+  capa de interacción dejara de repintar la imagen sucia que tenía capturada en su closure.
 - **La frontera `window.dbvShell` es demasiado fina.** `canvas_engine.js` todavía conoce el marcado de la
   barra (`_setBtnLabel`/`_getBtnLabel` codifican el contrato `<svg> + <span class="btn-txt">`) y
   `main.js` alterna a mano la visibilidad del panel de carga y del editor. Ese conocimiento pertenece al

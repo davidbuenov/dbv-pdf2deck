@@ -9,6 +9,30 @@ Gobernado por FastAPI y construido bajo reglas estrictas de código localizadas 
 """
 
 from contextlib import asynccontextmanager
+import logging
+import sys
+
+# Protección para subprocesos y pipes anónimos de Windows (evita OSError 22 al hacer flush)
+if sys.platform == "win32":
+    try:
+        if sys.stdout is not None:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+        if sys.stderr is not None:
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+    except Exception:
+        pass
+
+
+class SafeStreamHandler(logging.StreamHandler):
+    """Handler tolerante a pipes anónimos de Windows donde flush() puede lanzar OSError 22."""
+    def flush(self) -> None:
+        try:
+            super().flush()
+        except OSError:
+            pass
+
+
+logging.StreamHandler = SafeStreamHandler
 
 from api.endpoints import router as api_router
 from fastapi import FastAPI
@@ -35,13 +59,10 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Permitir CORS de forma estricta para el puerto del Frontend (5500)
+# Permitir CORS para clientes Web locales y Tauri WebView2
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5500",
-        "http://127.0.0.1:5500"
-    ],
+    allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -14,7 +14,11 @@ $binaryDirectory = Join-Path $projectRoot "src-tauri\binaries"
 Push-Location $projectRoot
 try {
     if (-not (Test-Path $pythonPath)) {
-        python -m venv $environmentPath
+        if (Get-Command py -ErrorAction SilentlyContinue) {
+            py -3.12 -m venv $environmentPath
+        } else {
+            python -m venv $environmentPath
+        }
     }
 
     & $pythonPath -m pip install --upgrade pip

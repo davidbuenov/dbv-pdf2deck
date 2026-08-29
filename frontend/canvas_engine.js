@@ -63,12 +63,14 @@ function updateCleanBgButtonLabel() {
         count = 1;
     }
 
+    const _t = (k, v) => window.DBV_I18N ? window.DBV_I18N.t(k, v) : k;
+
     if (count > 0) {
-        _setBtnLabel(btnCleanBg, `Limpiar selección (${count})`);
-        btnCleanBg.title = "Limpia el fondo exclusivamente de los cuadros seleccionados";
+        _setBtnLabel(btnCleanBg, _t("toolbar.cleanBgSelection", { count }));
+        btnCleanBg.title = _t("toolbar.cleanBgSelectionTitle");
     } else {
-        _setBtnLabel(btnCleanBg, "Limpiar Fondo");
-        btnCleanBg.title = "Limpia el fondo de todos los cuadros de la página actual";
+        _setBtnLabel(btnCleanBg, _t("toolbar.cleanBg"));
+        btnCleanBg.title = _t("toolbar.cleanBgTitle");
     }
 }
 
@@ -218,12 +220,21 @@ function deleteActiveBlocks() {
  * @returns {number}
  */
 function _calcFitZoom(canvas) {
-    const container = document.getElementById("canvas-container");
-    if (!container || !canvas.width) return 1.0;
-    const PADDING = 32; // px de margen a cada lado
-    const available = container.clientWidth - PADDING * 2;
-    const fitZoom = available / canvas.width;
-    return _clampZoom(fitZoom);
+    const container = document.getElementById("canvas-wrapper") || document.getElementById("canvas-container");
+    if (!canvas || !canvas.width || !canvas.height) return 1.0;
+    const PADDING_X = 48;
+    const PADDING_Y = 48;
+    const containerWidth = (container && container.clientWidth > PADDING_X)
+        ? container.clientWidth
+        : Math.max(300, window.innerWidth - 64);
+    const containerHeight = (container && container.clientHeight > PADDING_Y)
+        ? container.clientHeight
+        : Math.max(300, window.innerHeight - 120);
+
+    const availW = Math.max(200, containerWidth - PADDING_X);
+    const availH = Math.max(200, containerHeight - PADDING_Y);
+    const fitScale = Math.min(availW / canvas.width, availH / canvas.height, 1.25);
+    return _clampZoom(Math.max(0.6, fitScale));
 }
 
 function calculateOptimalFontSize(text, width, height) {
@@ -714,18 +725,16 @@ function _bindEraserActions() {
                 currentPage.image_base64 = "data:image/png;base64," + data.image_base64;
                 currentPage.ai_cleaned_bg = true;
 
-                // Re-renderizamos la imagen base del canvas manteniendo la goma activa en su sitio
-                const canvas = document.getElementById("pdf-canvas");
-                if (canvas) {
-                    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-                    const bgImg = new Image();
-                    bgImg.onload = () => {
-                        paintCanvasLayers(ctx, canvas, bgImg, currentPage.blocks);
-                    };
-                    bgImg.src = currentPage.image_base64;
-                }
+                // Re-render completo: `mountInteractionLayer` captura la imagen de
+                // fondo en su closure, asi que repintar aqui con una imagen suelta
+                // dejaria la capa de interaccion apuntando a la version sucia y el
+                // primer arrastre resucitaria lo borrado. `cycleViewEngine` recarga
+                // la imagen ya limpia y vuelve a montar la capa; `currentTargetBlock`
+                // sobrevive, de modo que la goma sigue seleccionada para reiterar.
+                cycleViewEngine();
             } catch (err) {
-                alert(`Error al aplicar goma de borrar: ${err.message}`);
+                const _t = (k, v) => window.DBV_I18N ? window.DBV_I18N.t(k, v) : k;
+                alert(_t("alerts.eraserError", { msg: err.message }));
             } finally {
                 _setBtnLabel(btnClean, originalText);
                 _syncEraserToolbarState();
@@ -1112,6 +1121,7 @@ function bindCanvasZoomControls() {
 }
 
 function initPagination(fullData) {
+    console.log("[DBV DIAG] initPagination called with", fullData?.total_pages, "pages");
     globalPayload = fullData;
     currentActivePageIndex = 0;
 
@@ -1134,7 +1144,7 @@ function initPagination(fullData) {
         }
     });
     
-    bindDualPage("btn-next", () => {
+    bindPage("btn-next", () => {
         if (currentActivePageIndex < globalPayload.pages.length - 1) {
             currentActivePageIndex++;
             cycleViewEngine();
@@ -1172,6 +1182,26 @@ function initPagination(fullData) {
             const currentPage = globalPayload?.pages?.[currentActivePageIndex];
             if (!currentPage) return;
             const currentBlocks = currentPage.blocks;
+
+            // Solo puede haber una goma por pagina: si ya existe (o quedaron
+            // varias de sesiones anteriores) nos quedamos con la primera y la
+            // reseleccionamos en lugar de sembrar el documento de gomas.
+            const existing = currentBlocks.filter(b => b.is_eraser);
+            if (existing.length > 0) {
+                const keeper = existing[0];
+                if (existing.length > 1) {
+                    for (let i = currentBlocks.length - 1; i >= 0; i--) {
+                        if (currentBlocks[i].is_eraser && currentBlocks[i] !== keeper) {
+                            currentBlocks.splice(i, 1);
+                        }
+                    }
+                }
+                currentTargetBlock = keeper;
+                cycleViewEngine();
+                _syncEraserToolbarState();
+                return;
+            }
+
             const canvas = document.getElementById("pdf-canvas");
             const cw = canvas ? canvas.width : 800;
             const ch = canvas ? canvas.height : 600;
@@ -1202,18 +1232,19 @@ function initPagination(fullData) {
     _bindEraserActions();
     _syncEraserToolbarState();
     
-    // Listener para Ctrl+Z (Undo) y Ctrl+Y (Redo)
-    if (_globalShortcutsMounted) return;
-    _globalShortcutsMounted = true;
-    document.addEventListener("keydown", (evt) => {
-        if ((evt.ctrlKey || evt.metaKey) && evt.key === 'z' && !evt.shiftKey) {
-            evt.preventDefault();
-            performUndo();
-        } else if ((evt.ctrlKey || evt.metaKey) && (evt.key === 'y' || (evt.shiftKey && evt.key === 'z'))) {
-            evt.preventDefault();
-            performRedo();
-        }
-    });
+    // Listener para Ctrl+Z (Undo) y Ctrl+Y (Redo) montado una única vez
+    if (!_globalShortcutsMounted) {
+        _globalShortcutsMounted = true;
+        document.addEventListener("keydown", (evt) => {
+            if ((evt.ctrlKey || evt.metaKey) && evt.key === 'z' && !evt.shiftKey) {
+                evt.preventDefault();
+                performUndo();
+            } else if ((evt.ctrlKey || evt.metaKey) && (evt.key === 'y' || (evt.shiftKey && evt.key === 'z'))) {
+                evt.preventDefault();
+                performRedo();
+            }
+        });
+    }
     
     // Lógica para Nano Banana API Key
     const apiKeyInput = document.getElementById("ai-api-key");
@@ -1287,7 +1318,8 @@ function initPagination(fullData) {
                 targetBlocks = blocks;
             }
 
-            _setBtnLabel(btnCleanBg, isSelective ? "Limpiando selección…" : "Limpiando fondo…");
+            const _t = (k, v) => window.DBV_I18N ? window.DBV_I18N.t(k, v) : k;
+            _setBtnLabel(btnCleanBg, isSelective ? _t("toolbar.cleanBgCleaningSel") : _t("toolbar.cleanBgCleaning"));
             btnCleanBg.disabled = true;
 
             try {
@@ -1296,7 +1328,7 @@ function initPagination(fullData) {
                     .map(b => ({ bbox: b.bbox }));
 
                 if (!useCloud && localBoxes.length === 0) {
-                    throw new Error("No hay bloques con coordenadas válidas para limpiar.");
+                    throw new Error(_t("alerts.noValidBoxes"));
                 }
 
                 const payload = useCloud
@@ -1327,7 +1359,7 @@ function initPagination(fullData) {
                 cycleViewEngine();
 
             } catch (err) {
-                alert(`Error al limpiar fondo: ${err.message}`);
+                alert(_t("alerts.cleanBgError", { msg: err.message }));
             } finally {
                 btnCleanBg.disabled = false;
                 updateCleanBgButtonLabel();
@@ -1340,15 +1372,33 @@ function initPagination(fullData) {
     bindCanvasZoomControls();
     mountExportControls(globalPayload);
     
+    // Escuchar cambios de idioma para actualizar textos dinámicos
+    document.addEventListener("dbv-lang-changed", () => {
+        updateCleanBgButtonLabel();
+        const indicator = document.getElementById("page-indicator");
+        if (indicator && globalPayload) {
+            const _t = (k, v) => window.DBV_I18N ? window.DBV_I18N.t(k, v) : k;
+            indicator.textContent = _t("page.indicator", {
+                current: currentActivePageIndex + 1,
+                total: globalPayload.total_pages
+            });
+        }
+    });
+
     cycleViewEngine();
 }
 
 function cycleViewEngine() {
+    console.log("[DBV DIAG] cycleViewEngine called, pageIndex=", currentActivePageIndex, "totalPages=", globalPayload?.total_pages);
     _closeInlineEditor(true);
 
+    const _t = (k, v) => window.DBV_I18N ? window.DBV_I18N.t(k, v) : k;
     const indicator = document.getElementById("page-indicator");
-    if (indicator) {
-        indicator.textContent = `Página ${currentActivePageIndex + 1} de ${globalPayload.total_pages}`;
+    if (indicator && globalPayload) {
+        indicator.textContent = _t("page.indicator", {
+            current: currentActivePageIndex + 1,
+            total: globalPayload.total_pages
+        });
     }
     window.dbvShell?.setPage(currentActivePageIndex + 1, globalPayload.total_pages);
     // Ocultar barra flotante al ciclar la página para evitar solapamientos
@@ -1362,41 +1412,72 @@ function cycleViewEngine() {
 }
 
 function renderNativeCanvasEditor(pageData) {
+    console.log("[DBV DIAG] renderNativeCanvasEditor called.",
+        "canvas?", !!document.getElementById("pdf-canvas"),
+        "pageData?", !!pageData,
+        "image_base64 length:", pageData?.image_base64?.length ?? 0,
+        "blocks:", pageData?.blocks?.length ?? 0);
     const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById("pdf-canvas"));
-    if (!canvas || !pageData.image_base64) return;
+    if (!canvas) {
+        console.error("[DBV Canvas] Elemento #pdf-canvas no encontrado.");
+        return;
+    }
+    if (!pageData || !pageData.image_base64) {
+        console.error("[DBV Canvas] pageData o image_base64 ausente:", pageData);
+        return;
+    }
     
     const renderSourceImage = new Image();
     
     renderSourceImage.onload = () => {
-        canvas.width = renderSourceImage.width;
-        canvas.height = renderSourceImage.height;
-        canvas.setAttribute("aria-label", `Área de Pág ${pageData.page_num} con ${pageData.blocks.length} bloques.`);
-        
-        // Desterramos fugas de memoria y listeners solapados de la página anterior
-        const safeCanvas = canvas.cloneNode(true);
-        canvas.parentNode.replaceChild(safeCanvas, canvas);
-        const freshCtx = safeCanvas.getContext("2d", { willReadFrequently: true });
+        try {
+            const imgWidth = renderSourceImage.naturalWidth || renderSourceImage.width;
+            const imgHeight = renderSourceImage.naturalHeight || renderSourceImage.height;
+            console.log("[DBV DIAG] Image loaded! dimensions:", imgWidth, "x", imgHeight);
 
-        // Auto-fit al cargar: si el usuario no ha interactuado con el zoom,
-        // calculamos el zoom que ajusta la página al ancho disponible del contenedor.
-        if (!_userHasZoomed) {
-            currentZoomScale = _calcFitZoom(safeCanvas);
-        }
-        applyZoomToCanvas(safeCanvas);
-        
-        paintCanvasLayers(freshCtx, safeCanvas, renderSourceImage, pageData.blocks);
-        mountInteractionLayer(safeCanvas, freshCtx, renderSourceImage, pageData.blocks);
-        
-        if (!pageData.blocks || pageData.blocks.length === 0) {
-            freshCtx.fillStyle = "rgba(255, 0, 0, 0.85)";
-            freshCtx.fillRect(0, 0, safeCanvas.width, 100);
-            freshCtx.fillStyle = "white";
-            freshCtx.font = "bold 24px system-ui";
-            freshCtx.fillText(`⚠️ 0 Bloques OCR en Pág ${pageData.page_num}`, 30, 50);
+            const currentCanvas = document.getElementById("pdf-canvas") || canvas;
+            console.log("[DBV DIAG] currentCanvas found?", !!currentCanvas, "parentNode?", !!currentCanvas?.parentNode);
+            const safeCanvas = currentCanvas.cloneNode(true);
+            safeCanvas.width = imgWidth;
+            safeCanvas.height = imgHeight;
+            safeCanvas.setAttribute("width", imgWidth.toString());
+            safeCanvas.setAttribute("height", imgHeight.toString());
+            safeCanvas.setAttribute("aria-label", `Área de Pág ${pageData.page_num} con ${(pageData.blocks || []).length} bloques.`);
+            if (currentCanvas.parentNode) {
+                currentCanvas.parentNode.replaceChild(safeCanvas, currentCanvas);
+            }
+
+            const freshCtx = safeCanvas.getContext("2d", { willReadFrequently: true });
+
+            if (!_userHasZoomed) {
+                currentZoomScale = _calcFitZoom(safeCanvas);
+            }
+            applyZoomToCanvas(safeCanvas);
+            
+            paintCanvasLayers(freshCtx, safeCanvas, renderSourceImage, pageData.blocks || []);
+            mountInteractionLayer(safeCanvas, freshCtx, renderSourceImage, pageData.blocks || []);
+            
+            if (!pageData.blocks || pageData.blocks.length === 0) {
+                const _t = (k, v) => window.DBV_I18N ? window.DBV_I18N.t(k, v) : k;
+                freshCtx.fillStyle = "rgba(255, 0, 0, 0.85)";
+                freshCtx.fillRect(0, 0, safeCanvas.width, 100);
+                freshCtx.fillStyle = "white";
+                freshCtx.font = "bold 24px system-ui";
+                freshCtx.fillText(_t("page.noBlocks", { num: pageData.page_num }), 30, 50);
+            }
+        } catch (err) {
+            console.error("[DBV Canvas] Error durante render de canvas:", err);
         }
     };
     
-    renderSourceImage.src = pageData.image_base64;
+    renderSourceImage.onerror = (err) => {
+        console.error("[DBV Canvas] Error cargando renderSourceImage:", err);
+    };
+
+    const src = pageData.image_base64.startsWith("data:")
+        ? pageData.image_base64
+        : `data:image/png;base64,${pageData.image_base64}`;
+    renderSourceImage.src = src;
 }
 
 function paintCanvasLayers(ctx, canvas, background, blocks) {
@@ -1865,11 +1946,16 @@ function bindFloatingToolbarEvents() {
     _makeToolbarDraggable("floating-toolbar");
     _makeToolbarDraggable("multi-toolbar");
 
-    document.getElementById("tb-close").onclick = () => {
-        document.getElementById("floating-toolbar").hidden = true;
-    };
+    // ── Close buttons (opcionales, pueden no existir en el HTML actual) ──
+    const tbClose = document.getElementById("tb-close");
+    if (tbClose) {
+        tbClose.onclick = () => {
+            document.getElementById("floating-toolbar").hidden = true;
+        };
+    }
 
-    const tbDelete = document.getElementById("tb-delete");
+    // Delete: puede ser "tb-delete" o "tb-btn-delete"
+    const tbDelete = document.getElementById("tb-delete") || document.getElementById("tb-btn-delete");
     if (tbDelete) {
         tbDelete.onclick = () => {
             if (!currentTargetBlock) return;
@@ -1879,51 +1965,60 @@ function bindFloatingToolbarEvents() {
         };
     }
     
-    document.getElementById("tb-save").onclick = () => {
-        if (!currentTargetBlock) return;
-        
-        // Leer DIRECTAMENTE del DOM sin validación compleja
-        currentTargetBlock.text = document.getElementById("tb-text").value || "";
-        currentTargetBlock.text_color = document.getElementById("tb-color").value;  // El color picker SIEMPRE retorna válido
-        currentTargetBlock.bg_color = document.getElementById("tb-bg").value;        // El color picker SIEMPRE retorna válido
-        const tpCheckbox = document.getElementById("tb-bg-transparent");
-        if (tpCheckbox) {
-            currentTargetBlock.bg_transparent = !!tpCheckbox.checked;
-        }
-        
-        const nextFontSize = parseFloat(document.getElementById("tb-size").value) || 16;
-        currentTargetBlock.font_size = nextFontSize;
-        currentTargetBlock.is_bold = !!document.getElementById("tb-bold").checked;
-        currentTargetBlock.is_italic = !!document.getElementById("tb-italic").checked;
-        const fontSizeChanged = nextFontSize !== currentTargetInitialFontSize;
-        currentTargetBlock.font_size_locked = currentTargetInitialFontLock || fontSizeChanged || currentTargetBlock.source === "native";
-        
-        const fontSelector = document.getElementById("tb-font");
-        if (fontSelector) {
-            currentTargetBlock.font_family = fontSelector.value;
-        }
-        
-        currentTargetBlock.is_modified = true;
-        
-        // Alineación
-        const alignKeys = ["left", "center", "right"];
-        const activeAlign = alignKeys.find(a => document.getElementById(`tb-align-${a}`)?.classList.contains("active")) || "left";
-        currentTargetBlock.text_align = activeAlign;
-        
-        // DEBUG: Log para verificar que se guardó
-        console.log("Bloque guardado:", {
-            text: currentTargetBlock.text,
-            text_color: currentTargetBlock.text_color,
-            bg_color: currentTargetBlock.bg_color
-        });
-        
-        // Guardar en el historial de undo
-        saveToUndoStack();
-        
-        // Ocultar modal y redibujar
-        document.getElementById("floating-toolbar").hidden = true;
-        cycleViewEngine();
-    };
+    // Save: puede no existir si la edición es inline
+    const tbSave = document.getElementById("tb-save");
+    if (tbSave) {
+        tbSave.onclick = () => {
+            if (!currentTargetBlock) return;
+            
+            // Leer DIRECTAMENTE del DOM sin validación compleja
+            const tbText = document.getElementById("tb-text");
+            if (tbText) currentTargetBlock.text = tbText.value || "";
+            
+            const tbColor = document.getElementById("tb-color") || document.getElementById("tb-text-color");
+            if (tbColor) currentTargetBlock.text_color = tbColor.value;
+            
+            const tbBg = document.getElementById("tb-bg") || document.getElementById("tb-bg-color");
+            if (tbBg) currentTargetBlock.bg_color = tbBg.value;
+            
+            const tpCheckbox = document.getElementById("tb-bg-transparent");
+            if (tpCheckbox) {
+                currentTargetBlock.bg_transparent = !!tpCheckbox.checked;
+            }
+            
+            const tbSize = document.getElementById("tb-size") || document.getElementById("tb-font-size");
+            const nextFontSize = parseFloat(tbSize?.value) || 16;
+            currentTargetBlock.font_size = nextFontSize;
+            
+            const tbBold = document.getElementById("tb-bold");
+            if (tbBold) currentTargetBlock.is_bold = !!tbBold.checked;
+            
+            const tbItalic = document.getElementById("tb-italic");
+            if (tbItalic) currentTargetBlock.is_italic = !!tbItalic.checked;
+            
+            const fontSizeChanged = nextFontSize !== currentTargetInitialFontSize;
+            currentTargetBlock.font_size_locked = currentTargetInitialFontLock || fontSizeChanged || currentTargetBlock.source === "native";
+            
+            const fontSelector = document.getElementById("tb-font") || document.getElementById("tb-font-family");
+            if (fontSelector) {
+                currentTargetBlock.font_family = fontSelector.value;
+            }
+            
+            currentTargetBlock.is_modified = true;
+            
+            // Alineación
+            const alignKeys = ["left", "center", "right"];
+            const activeAlign = alignKeys.find(a => document.getElementById(`tb-align-${a}`)?.classList.contains("active")) || "left";
+            currentTargetBlock.text_align = activeAlign;
+            
+            // Guardar en el historial de undo
+            saveToUndoStack();
+            
+            // Ocultar modal y redibujar
+            document.getElementById("floating-toolbar").hidden = true;
+            cycleViewEngine();
+        };
+    }
 
     // ── Multi-toolbar bindings ──
     const mtClose = document.getElementById("mt-close");
@@ -1939,9 +2034,9 @@ function bindFloatingToolbarEvents() {
         const activeAlign = alignKeys.find(a => document.getElementById(`mt-align-${a}`)?.classList.contains("active")) || "left";
         const styles = {
             font_size:     parseFloat(document.getElementById("mt-size")?.value) || 16,
-            text_color:    document.getElementById("mt-color")?.value,
-            bg_color:      document.getElementById("mt-bg")?.value,
-            bg_transparent: !!document.getElementById("mt-bg-transparent")?.checked,
+            text_color:    (document.getElementById("mt-color") || document.getElementById("mtb-text-color"))?.value,
+            bg_color:      (document.getElementById("mt-bg") || document.getElementById("mtb-bg-color"))?.value,
+            bg_transparent: !!(document.getElementById("mt-bg-transparent") || document.getElementById("mtb-bg-transparent"))?.checked,
             text_align:    activeAlign
         };
         equalizeSelectedFontSize(globalPayload.pages[currentActivePageIndex].blocks, [...selectedBlockIndices], styles);
@@ -1984,6 +2079,7 @@ function triggerVisualEditModal(blocks, targetIndex, ctxScope, domX, domY) {
     currentTargetInitialFontSize = suggestedFontSize;
     
     const toolbar = document.getElementById("floating-toolbar");
+    if (!toolbar) return;
     toolbar.hidden = false;
     
     // Posicionar el toolbar
@@ -1991,16 +2087,23 @@ function triggerVisualEditModal(blocks, targetIndex, ctxScope, domX, domY) {
     toolbar.style.left = `${Math.min(domX + window.scrollX + 15, window.innerWidth - 270)}px`;
     toolbar.style.top = `${Math.min(domY + window.scrollY, window.innerHeight + window.scrollY - 250)}px`;
     
-    // IMPORTANTE: Leer los valores ACTUALES del bloque (ya inicializados arriba)
-    // Esto asegura que si el usuario editó los colores antes, se mostrarán aquí
-    document.getElementById("tb-text").value = block.text;
-    document.getElementById("tb-color").value = block.text_color;  // Si lo editó, estará aquí
-    document.getElementById("tb-bg").value = block.bg_color;        // Si lo editó, estará aquí
+    // Rellenar campos — soportar ambos convenios de IDs
+    const tbText = document.getElementById("tb-text");
+    if (tbText) tbText.value = block.text;
+    
+    const tbColor = document.getElementById("tb-color") || document.getElementById("tb-text-color");
+    if (tbColor) tbColor.value = block.text_color;
+    
+    const tbBg = document.getElementById("tb-bg") || document.getElementById("tb-bg-color");
+    if (tbBg) tbBg.value = block.bg_color;
+    
     const tpCheckbox = document.getElementById("tb-bg-transparent");
     if (tpCheckbox) {
         tpCheckbox.checked = !!block.bg_transparent;
     }
-    document.getElementById("tb-size").value = suggestedFontSize;
+    
+    const tbSize = document.getElementById("tb-size") || document.getElementById("tb-font-size");
+    if (tbSize) tbSize.value = suggestedFontSize;
     
     const boldChk = document.getElementById("tb-bold");
     if (boldChk) boldChk.checked = block.is_bold;
@@ -2015,7 +2118,7 @@ function triggerVisualEditModal(blocks, targetIndex, ctxScope, domX, domY) {
         if (btn) btn.classList.toggle("active", a === blockAlign);
     });
     
-    const fontSelect = document.getElementById("tb-font");
+    const fontSelect = document.getElementById("tb-font") || document.getElementById("tb-font-family");
     if (fontSelect) {
         const hasOption = Array.from(fontSelect.options).some(opt => opt.value === block.font_family);
         if (!hasOption) {
@@ -2197,7 +2300,9 @@ function mountExportControls(fullPayload) {
             exportMd ? "MD" : null
         ].filter(Boolean).join("/");
 
-        _setBtnLabel(btnExport, `Generando ${selectedLabels}…`);
+        const _t = (k, v) => window.DBV_I18N ? window.DBV_I18N.t(k, v) : k;
+
+        _setBtnLabel(btnExport, _t("export.generating", { labels: selectedLabels }));
         btnExport.disabled = true;
         
         const exportModeSelect = document.getElementById("export-mode-select");
@@ -2226,17 +2331,12 @@ function mountExportControls(fullPayload) {
             };
 
             const blob = await window.dbvApi.exportDocument(sanitizedPayload);
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.style.display = "none";
-            a.href = url;
-            a.download = "Presentacion_Editada_DBV.zip";
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(url);
+            const savedPath = await window.dbvApi.saveBlobToDisk(blob, _t("export.done"));
+            if (savedPath && window.dbvApi.runningInTauri) {
+                alert(_t("alerts.exportSaved", { path: savedPath }));
+            }
         } catch(err) {
-            alert(`[Error API]: ${err.message}`);
+            alert(_t("alerts.exportError", { msg: err.message }));
         } finally {
             _setBtnLabel(btnExport, originalText);
             btnExport.disabled = false;
