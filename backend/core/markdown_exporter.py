@@ -8,15 +8,27 @@ Motor de exportación a Markdown a partir del payload procesado por el editor.
 
 Soporta dos fuentes de verdad:
 - Bloques detectados por OCR o texto nativo presentes en el payload del frontend.
-- Rescate opcional de enlaces ocultos del PDF original usando PyMuPDF.
+- Rescate opcional de enlaces ocultos del PDF original usando pypdf.
 """
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
 from pathlib import Path
 from statistics import median
-import re
 
-import fitz
+from pypdf import PdfReader
+
+
+@dataclass(frozen=True, slots=True)
+class _PdfRect:
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+    def intersects(self, other: _PdfRect) -> bool:
+        return self.x0 < other.x1 and other.x0 < self.x1 and self.y0 < other.y1 and other.y0 < self.y1
 
 
 def _normalize_whitespace(text: str) -> str:
@@ -53,16 +65,16 @@ def _block_center_x(block: dict) -> float:
     return (x0 + x1) / 2.0
 
 
-def _block_rect_to_pdf(block: dict, page_data: dict) -> fitz.Rect:
+def _block_rect_to_pdf(block: dict, page_data: dict) -> _PdfRect:
     bbox_pt = block.get("bbox_pt")
-    rect: fitz.Rect
+    rect: _PdfRect
 
     if bbox_pt and len(bbox_pt) == 4:
-        rect = fitz.Rect(tuple(float(value) for value in bbox_pt))
+        rect = _PdfRect(*(float(value) for value in bbox_pt))
     else:
         scale_x, scale_y = _page_scale_to_pdf_points(page_data)
         x0, y0, x1, y1 = block.get("bbox", [0, 0, 0, 0])
-        rect = fitz.Rect(
+        rect = _PdfRect(
             float(x0) * scale_x,
             float(y0) * scale_y,
             float(x1) * scale_x,
@@ -87,15 +99,7 @@ def _is_probable_noise_block(block: dict, median_font_size: float) -> bool:
     height = max(1.0, y1 - y0)
 
     is_noise = False
-    if not text:
-        is_noise = True
-    elif text == "NotebookLM":
-        is_noise = True
-    elif len(compact_alnum) <= 3 and compact_alnum.isdigit() and font_size <= median_font_size * 1.2:
-        is_noise = True
-    elif len(compact_alnum) <= 2 and re.fullmatch(r"[0Oo]+", compact_alnum):
-        is_noise = True
-    elif len(compact_alnum) <= 2 and width <= max(28.0, median_font_size * 1.4) and height <= max(28.0, median_font_size * 1.4):
+    if not text or text == "NotebookLM" or len(compact_alnum) <= 3 and compact_alnum.isdigit() and font_size <= median_font_size * 1.2 or len(compact_alnum) <= 2 and re.fullmatch(r"[0Oo]+", compact_alnum) or len(compact_alnum) <= 2 and width <= max(28.0, median_font_size * 1.4) and height <= max(28.0, median_font_size * 1.4):
         is_noise = True
 
     return is_noise
@@ -173,27 +177,22 @@ def _reorder_blocks_for_reading(blocks: list[dict], median_font_size: float) -> 
     return reordered_blocks
 
 
-def _extract_hidden_links(page: fitz.Page) -> list[dict]:
+def _extract_hidden_links(page: object) -> list[dict]:
     page_links: list[dict] = []
-    words = _sort_words(page.get_text("words"))
-
-    for link in page.get_links():
-        uri = link.get("uri")
-        link_rect_raw = link.get("from")
-        if not uri or not link_rect_raw:
+    annotations = page.get("/Annots") or []
+    for annotation in annotations:
+        link = annotation.get_object()
+        if link.get("/Subtype") != "/Link":
             continue
-
-        link_rect = fitz.Rect(link_rect_raw)
-        linked_words = [
-            word for word in words
-            if link_rect.intersects(fitz.Rect(float(word[0]), float(word[1]), float(word[2]), float(word[3])))
-        ]
-        link_text = _normalize_whitespace(" ".join(str(word[4]) for word in linked_words))
-
+        action = link.get("/A") or {}
+        uri = action.get("/URI")
+        link_rect_raw = link.get("/Rect")
+        if not uri or not link_rect_raw or len(link_rect_raw) != 4:
+            continue
         page_links.append({
-            "rect": link_rect,
+            "rect": _PdfRect(*(float(value) for value in link_rect_raw)),
             "url": str(uri),
-            "text": link_text,
+            "text": "",
         })
 
     return page_links
@@ -206,7 +205,7 @@ def _replace_first_literal(text: str, needle: str, replacement: str) -> str:
     return replaced_text
 
 
-def _decorate_text_with_hidden_links(text: str, block_rect: fitz.Rect, page_links: list[dict]) -> str:
+def _decorate_text_with_hidden_links(text: str, block_rect: _PdfRect, page_links: list[dict]) -> str:
     decorated_text = text
     matching_links = [
         link for link in page_links
@@ -343,9 +342,9 @@ def build_markdown_export(payload: dict, source_pdf_path: Path | None = None) ->
     markdown_sections.append(f"# {title}")
     markdown_sections.append("")
 
-    pdf_document: fitz.Document | None = None
+    pdf_document: PdfReader | None = None
     if source_pdf_path and source_pdf_path.exists():
-        pdf_document = fitz.open(str(source_pdf_path))
+        pdf_document = PdfReader(str(source_pdf_path))
 
     try:
         for page_data in payload.get("pages", []):
@@ -353,16 +352,15 @@ def build_markdown_export(payload: dict, source_pdf_path: Path | None = None) ->
             fallback_text = ""
             page_num = int(page_data.get("page_num", 0))
 
-            if pdf_document and 0 <= page_num < len(pdf_document):
-                pdf_page = pdf_document[page_num]
+            if pdf_document and 0 <= page_num < len(pdf_document.pages):
+                pdf_page = pdf_document.pages[page_num]
                 page_links = _extract_hidden_links(pdf_page)
-                fallback_text = str(pdf_page.get_text("text") or "")
+                fallback_text = str(pdf_page.extract_text() or "")
 
             markdown_sections.append(_build_page_markdown(page_data, page_links, fallback_text))
             markdown_sections.append("")
     finally:
-        if pdf_document is not None:
-            pdf_document.close()
+        pdf_document = None
 
     markdown_content = "\n".join(markdown_sections).strip() + "\n"
     return markdown_content.encode("utf-8")

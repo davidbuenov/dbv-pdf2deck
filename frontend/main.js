@@ -8,7 +8,8 @@
  * Gestiona interacciones de carga (File/Drag&Drop), telemetría de Terminal Visual y ruteo a Canvas.
  */
 
-const API_BASE_URL = "http://localhost:8000/api/v1";
+(() => {
+
 const SUPPORTED_UPLOAD_MIME = new Set([
     "application/pdf",
     "image/png",
@@ -110,10 +111,9 @@ function closeServerEventSource() {
     }
 }
 
-function connectToServerLogs(docId) {
+async function connectToServerLogs(docId) {
     closeServerEventSource();
-    const eventUrl = `${API_BASE_URL}/process-log-stream/${docId}`;
-    serverEventSource = new EventSource(eventUrl);
+    serverEventSource = await window.dbvApi.openProcessLogStream(docId);
     
     serverEventSource.onmessage = (event) => {
         if (event.data) {
@@ -168,6 +168,12 @@ if (dropzone) {
     };
 }
 
+// La barra superior permite cambiar de documento sin volver al panel de carga.
+const btnOpenFile = document.getElementById("btn-open-file");
+if (btnOpenFile) {
+    btnOpenFile.onclick = () => fileInput && fileInput.click();
+}
+
 if (fileInput) {
     fileInput.addEventListener("change", (e) => {
         const files = e.target.files;
@@ -187,54 +193,58 @@ async function ingestPdfAndTriggerOcr(pdfBlob) {
         : `doc-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
     // Abrir SSE ANTES del POST para ver progreso en tiempo real desde la primera página.
-    connectToServerLogs(clientDocId);
+    await connectToServerLogs(clientDocId);
 
-    const formData = new FormData();
-    formData.append("file", pdfBlob);
-    formData.append("doc_id", clientDocId);
+    // Volvemos al panel de carga: si ya había un documento abierto, el progreso
+    // de este tiene que verse igual que la primera vez.
+    const uploadPanel = document.getElementById("upload-panel");
+    const workspaceGate = document.getElementById("editor-workspace");
+    if (uploadPanel) uploadPanel.hidden = false;
+    if (workspaceGate) workspaceGate.hidden = true;
+    window.dbvShell?.setDocumentState(false);
 
-    // Ocultar area de Drag para dar protagonismo a la Terminal si se prefiere
-    // document.getElementById("upload-panel").hidden = true; 
-    
     terminalPrint(`Iniciando Uplink. Transfiriendo archivo '${pdfBlob.name}' (Size: ${(pdfBlob.size / 1024 / 1024).toFixed(2)} MB)...`);
     terminalPrint("Red conectada. Esperando a motor Offline OCR (Modo Turbo GPU si está disponible)...");
     startIngestHeartbeat();
 
     try {
-        const response = await fetch(`${API_BASE_URL}/process`, {
-            method: "POST",
-            body: formData
-        });
-
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.detail || `Excepción Servidor Status: ${response.status}`);
-        }
-
-        const businessLogicResponse = await response.json();
+        const businessLogicResponse = await window.dbvApi.processDocument(pdfBlob, clientDocId);
         terminalPrint(`¡ÉXITO TOTAL! ${businessLogicResponse.total_pages} páginas recibidas desde el microservicio backend.`);
         terminalPrint(`Módulos cargados exitosamente. Construyendo UI HTML5 Canvas e instanciando motor Exportador...`);
         stopIngestHeartbeat();
         
-        const workspaceGate = document.getElementById("editor-workspace");
         if (workspaceGate) workspaceGate.hidden = false;
+        if (uploadPanel) uploadPanel.hidden = true;
+        window.dbvShell?.setDocumentState(true, pdfBlob.name, businessLogicResponse.total_pages);
 
-        // Invocación import() asíncrona difiriendo carga masiva inicial del Motor UI
-        const cacheBuster = Date.now();
-        import(`./canvas_engine.js?v=${cacheBuster}`)
-            .then(canvasFeature => {
-                if (businessLogicResponse.pages && businessLogicResponse.pages.length > 0) {
-                    canvasFeature.initPagination(businessLogicResponse);
-                    canvasFeature.mountKeyboardShortcuts();
-                }
-            })
-            .catch(errorLoad => {
-                terminalPrint(`[FATAL] La importación del motor Canvas falló: ${errorLoad}`);
-            });
-
+        const canvasFeature = window.dbvCanvasEngine;
+        if (!canvasFeature) {
+            terminalPrint("[FATAL] El motor Canvas no está disponible.");
+            return;
+        }
+        if (businessLogicResponse.pages && businessLogicResponse.pages.length > 0) {
+            canvasFeature.initPagination(businessLogicResponse);
+            canvasFeature.mountKeyboardShortcuts();
+        }
     } catch (e) {
         stopIngestHeartbeat();
         closeServerEventSource();
         terminalPrint(`❌ ABORTO DE OPERACIÓN HTTP: ${e.message}`);
     }
 }
+
+// Comprobación inicial de disponibilidad de motor backend
+window.addEventListener("DOMContentLoaded", async () => {
+    try {
+        const health = await window.dbvApi.checkHealth();
+        if (health && health.status === "running") {
+            terminalPrint(`✓ Motor backend conectado. Modo: ${window.dbvShell?.runtimeLabel ?? "desconocido"}`);
+            window.dbvShell?.setEngineStatus(true);
+        }
+    } catch (err) {
+        // En arranque en frío el backend puede tardar unos milisegundos en responder
+        console.log("[DBV] Esperando inicio de backend...");
+        window.dbvShell?.setEngineStatus(false);
+    }
+});
+})();

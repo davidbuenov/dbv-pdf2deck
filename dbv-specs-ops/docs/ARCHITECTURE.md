@@ -69,6 +69,7 @@ dbv-pdf2deck/
 - Cabecera de copyright MIT en todos los ficheros de `backend/core/`.
 - Linters declarados: `ruff` y `mypy` (en `requirements.txt`); `pyrightconfig.json` en la raíz.
 - Docstrings en español, descriptivos por función.
+- Minimizar el uso de returns dentro de un método o función.
 
 ### Gestión de Estado
 

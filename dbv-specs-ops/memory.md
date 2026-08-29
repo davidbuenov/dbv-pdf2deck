@@ -26,6 +26,9 @@
 - **2026-08-28 — Orden (b): Tauri primero, sustitución de PyMuPDF después.** Decisión del usuario. La migración a escritorio no se bloquea con la reescritura del exportador. **Consecuencia que hay que tener presente:** no se pueden publicar instaladores hasta que la sustitución aterrice, porque empaquetar en un binario hace la contradicción de licencia insoslayable. `LICENSE` (MIT) ya existe, pero no cierra nada mientras PyMuPDF siga en `requirements.txt`.
 
 - **2026-08-28 — Modo pro: se añaden tests.** Decisión del usuario. La cobertura era cero (`backend/tests/` vacía). El detonante: hay que reescribir tres módulos del pipeline, y sin red de seguridad la sustitución puede degradar la fidelidad en silencio. El volcado por línea del spike se convierte en la referencia de regresión del lector.
+- **2026-08-28 — Frontend clásico para Tauri sin bundler.** `main.js` y `canvas_engine.js` se encapsulan
+  en IIFE y el motor expone una única API en `window.dbvCanvasEngine`. Se elimina la carga ESM dinámica
+  para que el WebView nativo use scripts clásicos, manteniendo las tres operaciones públicas del canvas.
 
 ## ⚠️ Lecciones Aprendidas / Errores Evitados
 
@@ -39,6 +42,24 @@
 - **[El bug crítico y la deuda legal son el mismo trabajo]**: `insert_textbox` de PyMuPDF descarta el texto **en silencio** cuando no cabe, y por eso el PDF exportado sale sin texto. El sustituto probado dibuja lo que cabe y **devuelve el sobrante**. Arreglar el bug por separado sería trabajo tirado.
 
 - **[Frontend sin bundler: dos trampas caras]**: los scripts clásicos comparten ámbito global, así que `main.js` y `canvas_engine.js` deben ir **cada uno en su IIFE** antes de tocar Tauri — una colisión de nombres da un `SyntaxError` de parseo que mata el fichero entero y deja la interfaz muerta con la app renderizando bien. Y **nunca declarar `const isTauri`**: con `withGlobalTauri: true` Tauri v2 ya inyecta ese global; usar `runningInTauri`.
+- **2026-08-28 — Adaptador único de transporte frontend.** `frontend/api.js` concentra las operaciones
+  HTTP y SSE en `window.dbvApi`, con detección `runningInTauri`. La ruta Tauri conserva HTTP local hasta
+  que la Fase 6 aporte el sidecar y la negociación de puerto; ningún consumidor conoce las URLs del backend.
+- **2026-08-28 — Empaquetado Python aislado.** PyInstaller no se instala en `backend/venv`; la receta usa
+  `.venv-sidecar` y genera el ejecutable target-specific en `src-tauri/binaries/`, ignorado por Git.
+- **[Licencia antes del binario]**: la receta de sidecar queda preparada, pero no se ejecuta mientras
+  `backend/requirements.txt` incluya PyMuPDF AGPL. El primer build distribuible debe ocurrir después de
+  completar la sustitución por `pypdfium2`, `reportlab` y `pypdf`.
+- **2026-08-28 — Lector PDFium activo.** `process_pdf_file` conserva `PDFDocumentContext`, `PageRender` y
+  `OCRBlock`; aplica la escala efectiva de fuente, ignora cajas degeneradas de espacios y convierte el
+  sistema de coordenadas inferior de PDFium al superior del canvas. PyMuPDF queda como legado temporal.
+- **2026-08-28 — Escritura PDF migrada.** `reportlab` crea overlays vectoriales y `pypdf` los fusiona con
+  el original. El tamaño de fuente se reduce hasta que el texto cabe y se registra cualquier sobrante;
+  así se elimina el descarte silencioso de `insert_textbox`.
+- **2026-08-28 — Limpieza definitiva y erradicación de PyMuPDF.** Se eliminaron todos los cuerpos legacy inalcanzables en `pdf_renderer.py` y `exporter_engine.py`. El backend opera 100% libre de dependencias AGPL con `pypdfium2`, `reportlab` y `pypdf`.
+- **2026-08-28 — Sidecar target-specific y validación de Tauri v2.** Binario `dbv-pdf2deck-sidecar-x86_64-pc-windows-msvc.exe` compilado y ubicado en `src-tauri/binaries/`. `src-tauri/src/lib.rs` consume el sidecar con puerto dinámico y `cargo check` compila limpiamente sin errores ni warnings.
+- **2026-08-28 — Goma Mágica y Limpieza de Fondo Selectiva (OpenCV Telea Inpainting).** En lugar de limpiar forzosamente la página entera y obligar al usuario a reajustar textos intactos, el motor aplica inpainting exclusivamente sobre los cuadros seleccionados. Además, se creó la herramienta `🧹 Goma` (caja efímera redimensionable y desplazable) con soporte de ejecución reiterativa local sobre la misma área para refinar texturas. Los bloques de goma se sanitizan y filtran antes de cualquier exportación (PPTX/PDF/MD) para evitar shapes espurios.
+- **[Posicionamiento de toolbars flotantes hijas del Canvas]**: Cualquier toolbar contextual flotante asociada a coordenadas de bloques de canvas debe insertarse dentro de `#canvas-wrapper` (que tiene posicionamiento relativo) y no en el `body`/`main`, para evitar desalineaciones con el zoom y scroll del lienzo.
 
 - **[El pack de OCR no es un extra para minorías]**: el README vende como caso de uso principal los PDFs de solo imagen y las infografías de IA — justo las rutas que pasan por OCR. Un instalador pequeño que deje al usuario sin la función que fue a buscar es peor que uno grande. El asistente de primer arranque es alcance obligatorio.
 

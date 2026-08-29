@@ -11,8 +11,56 @@ y el proyecto adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 > Los cambios en desarrollo aparecerán aquí antes de ser publicados.
 
-### Añadido en Sin publicar
+- Se rediseña el shell de escritorio: la cabecera de marketing y la «ribbon» de secciones dan paso a
+  una barra superior nativa de 48 px con las herramientas dentro, iconografía SVG de trazo en lugar de
+  emojis, barra de estado inferior y scrollbars tematizadas. El lienzo pasa a ocupar la ventana completa
+  sin el ancho máximo heredado del diseño web.
+- Se añade el botón de **chincheta** (mantener la ventana encima del resto) y el modal **«Acerca de»**
+  con versión, descripción y enlaces, que en escritorio se abren en el navegador del sistema. Ambos son
+  parte del baseline de `dbv-tauri-starter` que faltaba.
+- Se agrupan el modo de exportación y los formatos en un menú desplegable, en lugar de ocupar
+  permanentemente la barra de herramientas.
+- Se añade un botón de abrir documento en la barra, de modo que cambiar de archivo ya no obliga a
+  volver al panel de carga.
+- La **Goma Mágica** se dibuja ahora como una goma de nata semitransparente apoyada sobre el documento
+  —cuerpo redondeado, bisel y sombra— en lugar del recuadro fucsia con etiqueta. Sus acciones («Borrar
+  zona» y retirar la goma) se mueven a la barra de herramientas y desaparece la cajita flotante que las
+  acompañaba sobre el lienzo.
+- El modo web sigue funcionando igual: la chincheta solo aparece bajo Tauri y el resto del chrome es
+  común a ambos modos.
 
+### Fixed
+- El botón «Limpiar Fondo» destruía su propio icono al pulsarlo, al escribir el texto de progreso
+  directamente sobre el contenido del botón.
+- Los listeners globales de teclado se acumulaban al abrir un segundo documento, de modo que un solo
+  `Ctrl+Z` deshacía tantos pasos como documentos se hubieran abierto en la sesión.
+- La exportación clonaba en JSON las imágenes base64 de todas las páginas solo para descartar los
+  bloques de goma; ahora la copia es superficial y las imágenes se comparten por referencia.
+- La goma se rasteriza una sola vez y se reutiliza mientras no cambie de tamaño, en lugar de recalcular
+  su sombra difuminada en cada fotograma del arrastre.
+- Se sincroniza la versión de `src-tauri/Cargo.toml` (estaba en `0.1.0`) con `package.json`,
+  `tauri.conf.json` y el panel «Acerca de».
+- `dragDropEnabled: false` en la configuración de la ventana: con el valor por defecto, Tauri captura
+  el arrastre a nivel de sistema operativo y la zona de soltar del frontend deja de recibir eventos.
+
+- Se erradica por completo la dependencia y el código legacy de PyMuPDF (`fitz`), completando la migración del backend a librerías permisivas (`pypdfium2`, `reportlab` y `pypdf`) y asegurando la conformidad legal con la licencia MIT del proyecto.
+- Se implementa el arnés oficial de pruebas unitarias y de integración en `backend/tests/` con `conftest.py`, suite de 41 tests pasando al 100% que cubren helpers geométricos, fuentes Base-14, exportadores PDF, PPTX, Markdown y renderizado/enrutado.
+- Se compila y valida el binario del sidecar de Python (`dbv-pdf2deck-sidecar-x86_64-pc-windows-msvc.exe`) en `src-tauri/binaries/`, y se supera exitosamente `cargo check` para la integración nativa de escritorio con Tauri v2.
+- Se añade método de verificación de salud `checkHealth` en `frontend/api.js` y telemetría de modo de ejecución (Tauri vs Navegador) en `frontend/main.js`.
+- Se incorpora el scaffold Tauri v2 y la configuración de release multiplataforma para iniciar la
+  migración de DBV PDF2Deck a escritorio nativo en modo dual.
+- Se encapsulan los scripts del frontend en IIFE y se elimina la dependencia de módulos ES para
+  compatibilidad con el WebView nativo de Tauri.
+- Se centraliza el transporte del frontend en `api.js`, incluyendo procesamiento, SSE, limpieza de
+  fondo y exportación, manteniendo el modo web y el escritorio preparados para el sidecar.
+- Se añade la receta aislada para construir el sidecar Python con PyInstaller y conectarlo al bundler
+  de Tauri sin contaminar el entorno virtual de desarrollo.
+- Se prepara el arranque del sidecar con puerto libre, exposición del puerto al frontend y cierre
+  explícito del proceso al salir de la aplicación Tauri.
+- Se activa la lectura y rasterización PDF con PDFium, preservando los metadatos de texto nativo que
+  consume el editor Canvas y dejando PyMuPDF pendiente únicamente en las rutas restantes.
+- Se migran las exportaciones PDF a reportlab y pypdf, con ajuste de tamaño y reporte de líneas sobrantes;
+  se añade una primera prueba de regresión para impedir que el texto desaparezca en silencio.
 - Se añade una sección destacada de **videotutoriales oficiales de YouTube** en `README.md`, con enlace a la playlist y a cada video individual (instalación, NotebookLM, NotebookLM con fondos complejos e infografías).
 - Se reorganizan los enlaces de videos del `README.md` en **formato tabla** para mejorar visibilidad y consulta rápida.
 - Se actualizan las tablas de videos del `README.md` con **títulos oficiales de cada video** y enlaces clicables (`Ver video` / `Ver playlist`).

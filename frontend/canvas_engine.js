@@ -8,11 +8,69 @@
  * Gestiona la paginación, el formateo modular (Barra flotante), las capas de ocr y el exportador.
  */
 
+(() => {
+
 let globalPayload = null;
 let currentActivePageIndex = 0;
 let currentZoomScale = 1.0;
 let _userHasZoomed = false;
 let selectedBlockIndices = []; // Índices de bloques en modo multi-selección (Ctrl+Click)
+
+// Los listeners globales se montan una sola vez. Abrir un segundo documento
+// vuelve a llamar a initPagination() y mountKeyboardShortcuts() sobre el mismo
+// módulo; sin este guardo, cada Ctrl+Z desharía tantos pasos como documentos
+// se hubieran abierto en la sesión.
+let _globalShortcutsMounted = false;
+let _undoShortcutsMounted = false;
+
+/**
+ * Escribe la etiqueta de un botón de la barra sin destruir su icono SVG.
+ * Los botones del chrome son `<svg>` + `<span class="btn-txt">`, así que
+ * asignar `textContent` directamente se llevaría el icono por delante.
+ * @param {HTMLElement|null} btn Botón de la barra superior.
+ * @param {string} text Texto visible.
+ */
+function _setBtnLabel(btn, text) {
+    if (!btn) return;
+    const slot = btn.querySelector(".btn-txt");
+    if (slot) slot.textContent = text;
+    else btn.textContent = text;
+}
+
+/**
+ * Lee la etiqueta visible de un botón de la barra.
+ * @param {HTMLElement|null} btn Botón de la barra superior.
+ * @returns {string} Texto visible actual.
+ */
+function _getBtnLabel(btn) {
+    if (!btn) return "";
+    const slot = btn.querySelector(".btn-txt");
+    return slot ? slot.textContent : btn.textContent;
+}
+
+function updateCleanBgButtonLabel() {
+    const btnCleanBg = document.getElementById("btn-clean-bg");
+    if (!btnCleanBg || !globalPayload) return;
+    const page = globalPayload?.pages?.[currentActivePageIndex];
+    if (!page?.blocks) return;
+
+    let count = 0;
+    if (selectedBlockIndices && selectedBlockIndices.length > 0) {
+        count = selectedBlockIndices.length;
+    } else if (inlineEditorSession?.block) {
+        count = 1;
+    } else if (currentTargetBlock) {
+        count = 1;
+    }
+
+    if (count > 0) {
+        _setBtnLabel(btnCleanBg, `Limpiar selección (${count})`);
+        btnCleanBg.title = "Limpia el fondo exclusivamente de los cuadros seleccionados";
+    } else {
+        _setBtnLabel(btnCleanBg, "Limpiar Fondo");
+        btnCleanBg.title = "Limpia el fondo de todos los cuadros de la página actual";
+    }
+}
 
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 3.0;
@@ -340,11 +398,130 @@ function drawResizeHandles(ctx, bbox) {
         ctx.strokeRect(hx - half, hy - half, HANDLE_SIZE, HANDLE_SIZE);
     }
 }
+
+// ─── Goma Mágica: representación visual de goma de nata ──────────────────────
+// La zona a borrar se dibuja como una goma escolar blanca apoyada sobre el
+// documento (no como un recuadro de selección), para que se lea de un vistazo
+// qué hace la herramienta. Es semitransparente a propósito: el usuario tiene
+// que seguir viendo lo que hay debajo antes de borrarlo.
+const ERASER_BODY_ALPHA = 0.78;
+
+function _roundRectPath(ctx, x, y, w, h, r) {
+    const radius = Math.max(0, Math.min(r, w / 2, h / 2));
+    ctx.beginPath();
+    if (typeof ctx.roundRect === "function") {
+        ctx.roundRect(x, y, w, h, radius);
+        return;
+    }
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + w - radius, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+    ctx.lineTo(x + w, y + h - radius);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+    ctx.lineTo(x + radius, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+}
+
+/**
+ * Dibuja el bloque de goma como una goma de nata: cuerpo blanco roto con
+ * esquinas redondeadas, bisel superior, brillo especular y sombra proyectada.
+ * @param {CanvasRenderingContext2D} ctx Contexto de pintado.
+ * @param {number[]} bbox Caja [x0, y0, x1, y1] en píxeles físicos del canvas.
+ * @param {boolean} isActive Si la goma es el bloque seleccionado.
+ */
+let _eraserSprite = null;
+let _eraserSpriteKey = "";
+
+/**
+ * Rasteriza la goma en un lienzo aparte y lo reutiliza mientras no cambien su
+ * tamaño ni su estado. La sombra difuminada es lo más caro del pintado y
+ * `paintCanvasLayers` se ejecuta en cada mousemove del arrastre: sin esta caché
+ * WebView2 arrastra la goma a tirones aunque en Chrome vaya fluida.
+ * @param {number} w Ancho de la goma en píxeles físicos.
+ * @param {number} h Alto de la goma en píxeles físicos.
+ * @param {boolean} isActive Si la goma es el bloque seleccionado.
+ * @returns {HTMLCanvasElement} Lienzo con la goma ya dibujada (incluido el margen de sombra).
+ */
+function _eraserSpriteFor(w, h, isActive) {
+    const key = `${w}x${h}:${isActive}`;
+    if (_eraserSprite && _eraserSpriteKey === key) return _eraserSprite;
+
+    const radius = Math.min(w, h) * 0.16;
+    const bevel = Math.max(1.5, Math.min(w, h) * 0.07);
+    const innerRadius = Math.max(1, radius - bevel * 0.5);
+    const blur = Math.max(6, h * 0.18);
+    const offsetY = Math.max(2, h * 0.06);
+    const pad = Math.ceil(blur + offsetY);
+
+    const sprite = document.createElement("canvas");
+    sprite.width = Math.ceil(w + pad * 2);
+    sprite.height = Math.ceil(h + pad * 2);
+    const sctx = sprite.getContext("2d");
+
+    sctx.globalAlpha = ERASER_BODY_ALPHA;
+
+    // Sombra proyectada: hace que la goma "descanse" sobre el documento
+    sctx.shadowColor = "rgba(15, 23, 42, 0.35)";
+    sctx.shadowBlur = blur;
+    sctx.shadowOffsetY = offsetY;
+
+    // Cuerpo de nata: blanco roto con caída a crema en la base
+    const body = sctx.createLinearGradient(0, pad, 0, pad + h);
+    body.addColorStop(0, "#fffdf7");
+    body.addColorStop(0.55, "#f7f3e9");
+    body.addColorStop(1, "#e6dfd0");
+    _roundRectPath(sctx, pad, pad, w, h, radius);
+    sctx.fillStyle = body;
+    sctx.fill();
+
+    sctx.shadowColor = "transparent";
+    sctx.shadowBlur = 0;
+    sctx.shadowOffsetY = 0;
+
+    // Bisel: la cara superior de la goma, más clara que el canto
+    _roundRectPath(sctx, pad + bevel, pad + bevel, w - bevel * 2, h - bevel * 2, innerRadius);
+    sctx.fillStyle = "rgba(255, 255, 255, 0.55)";
+    sctx.fill();
+
+    // Brillo especular en la mitad superior
+    const gloss = sctx.createLinearGradient(pad, pad, pad + w * 0.6, pad + h * 0.6);
+    gloss.addColorStop(0, "rgba(255, 255, 255, 0.75)");
+    gloss.addColorStop(1, "rgba(255, 255, 255, 0)");
+    _roundRectPath(sctx, pad + bevel, pad + bevel, w - bevel * 2, (h - bevel * 2) * 0.45, innerRadius);
+    sctx.fillStyle = gloss;
+    sctx.fill();
+
+    // Contorno: discreto en reposo, azul de selección cuando está activa
+    sctx.globalAlpha = 1;
+    _roundRectPath(sctx, pad, pad, w, h, radius);
+    sctx.lineWidth = isActive ? 2 : 1.25;
+    sctx.strokeStyle = isActive ? "rgba(66, 153, 225, 0.95)" : "rgba(148, 138, 118, 0.55)";
+    sctx.stroke();
+
+    sprite.dataset.pad = String(pad);
+    _eraserSprite = sprite;
+    _eraserSpriteKey = key;
+    return sprite;
+}
+
+function drawNataEraser(ctx, bbox, isActive) {
+    const [x0, y0, x1, y1] = bbox;
+    const w = Math.round(x1 - x0);
+    const h = Math.round(y1 - y0);
+    if (w <= 0 || h <= 0) return;
+
+    const sprite = _eraserSpriteFor(w, h, isActive);
+    const pad = Number(sprite.dataset.pad);
+    ctx.drawImage(sprite, x0 - pad, y0 - pad);
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 function _isResizeInteractiveBlock(block) {
     if (!block) return false;
-    return !!block.is_modified || block === currentTargetBlock || block === inlineEditorSession?.block;
+    return !!block.is_modified || !!block.is_eraser || block === currentTargetBlock || block === inlineEditorSession?.block;
 }
 
 // Variables reactivas de estado (Toolbar UI)
@@ -489,6 +666,89 @@ function _positionInlineEditor() {
             toolbar.style.left = `${left}px`;
             toolbar.style.top = `${top}px`;
         }
+    }
+}
+
+/**
+ * Sincroniza los botones de la Goma Mágica, que viven en la barra de
+ * herramientas superior: solo se habilitan si hay una goma seleccionada.
+ * Sustituye a la antigua cajita flotante sobre el canvas.
+ */
+/**
+ * Oculta la barra flotante de edición sin reescribir el atributo en cada frame:
+ * escribirlo ensucia el estilo y fuerza un recálculo de layout en el
+ * `getBoundingClientRect()` del siguiente mousemove.
+ */
+function _hideFloatingToolbar() {
+    const toolbar = document.getElementById("floating-toolbar");
+    if (toolbar && !toolbar.hidden) toolbar.hidden = true;
+}
+
+function _syncEraserToolbarState() {
+    window.dbvShell?.setGate("eraser", !!currentTargetBlock?.is_eraser);
+}
+
+function _bindEraserActions() {
+    const btnClean = document.getElementById("btn-eraser-clean");
+    const btnDelete = document.getElementById("btn-eraser-delete");
+
+    if (btnClean && btnClean.dataset.bound !== "true") {
+        btnClean.dataset.bound = "true";
+        btnClean.onclick = async () => {
+            if (!currentTargetBlock || !currentTargetBlock.is_eraser) return;
+            const currentPage = globalPayload?.pages?.[currentActivePageIndex];
+            if (!currentPage) return;
+
+            const originalText = _getBtnLabel(btnClean);
+            _setBtnLabel(btnClean, "Borrando…");
+            btnClean.disabled = true;
+
+            try {
+                const payload = {
+                    image_base64: currentPage.image_base64,
+                    boxes: [{ bbox: currentTargetBlock.bbox }]
+                };
+
+                const data = await window.dbvApi.cleanBackground(payload, false);
+                saveToUndoStack();
+                currentPage.image_base64 = "data:image/png;base64," + data.image_base64;
+                currentPage.ai_cleaned_bg = true;
+
+                // Re-renderizamos la imagen base del canvas manteniendo la goma activa en su sitio
+                const canvas = document.getElementById("pdf-canvas");
+                if (canvas) {
+                    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+                    const bgImg = new Image();
+                    bgImg.onload = () => {
+                        paintCanvasLayers(ctx, canvas, bgImg, currentPage.blocks);
+                    };
+                    bgImg.src = currentPage.image_base64;
+                }
+            } catch (err) {
+                alert(`Error al aplicar goma de borrar: ${err.message}`);
+            } finally {
+                _setBtnLabel(btnClean, originalText);
+                _syncEraserToolbarState();
+            }
+        };
+    }
+
+    if (btnDelete && btnDelete.dataset.bound !== "true") {
+        btnDelete.dataset.bound = "true";
+        btnDelete.onclick = () => {
+            if (!currentTargetBlock || !currentTargetBlock.is_eraser) return;
+            const currentPage = globalPayload?.pages?.[currentActivePageIndex];
+            if (!currentPage?.blocks) return;
+
+            const idx = currentPage.blocks.indexOf(currentTargetBlock);
+            if (idx !== -1) {
+                saveToUndoStack();
+                currentPage.blocks.splice(idx, 1);
+            }
+            currentTargetBlock = null;
+            _syncEraserToolbarState();
+            cycleViewEngine();
+        };
     }
 }
 
@@ -709,6 +969,7 @@ function _closeInlineEditor(saveChanges) {
     }
 
     inlineEditorSession = null;
+    updateCleanBgButtonLabel();
 
     paintCanvasLayers(ctxScope.ctx, ctxScope.canvas, ctxScope.bgImage, ctxScope.blocks);
 }
@@ -717,6 +978,16 @@ function startInlineBlockEdit(blocks, targetIndex, ctxScope) {
     const block = blocks[targetIndex];
     if (!block) return;
     currentTargetBlock = block;
+    updateCleanBgButtonLabel();
+    _syncEraserToolbarState();
+    _hideFloatingToolbar();
+    const multiToolbar = document.getElementById("multi-toolbar");
+    if (multiToolbar) multiToolbar.hidden = true;
+
+    if (block.is_eraser) {
+        _closeInlineEditor(true);
+        return;
+    }
 
     const editor = _ensureInlineEditorElement();
     if (!editor) return;
@@ -724,9 +995,6 @@ function startInlineBlockEdit(blocks, targetIndex, ctxScope) {
     if (inlineEditorSession) {
         _closeInlineEditor(true);
     }
-
-    document.getElementById("floating-toolbar").hidden = true;
-    document.getElementById("multi-toolbar").hidden = true;
 
     _bindInlineToolbarEvents();
     const toolbar = _inlineToolbarElement();
@@ -809,33 +1077,31 @@ function applyZoomToCanvas(canvas) {
     canvas.style.width = `${Math.round(canvas.width * zoom)}px`;
     canvas.style.height = `${Math.round(canvas.height * zoom)}px`;
 
-    const indicators = [document.getElementById("zoom-indicator"), document.getElementById("zoom-indicator-top")];
-    indicators.forEach(ind => { 
-        if (ind) ind.textContent = `${Math.round(zoom * 100)}%`; 
-    });
+    const indicator = document.getElementById("zoom-indicator");
+    if (indicator) indicator.textContent = `${Math.round(zoom * 100)}%`;
 
     _positionInlineEditor();
 }
 
 function bindCanvasZoomControls() {
-    const bindDualZoom = (baseId, handler) => {
-        const els = [document.getElementById(baseId), document.getElementById(`${baseId}-top`)];
-        els.forEach(el => { if (el) el.onclick = handler; });
+    const bindZoom = (id, handler) => {
+        const el = document.getElementById(id);
+        if (el) el.onclick = handler;
     };
 
-    bindDualZoom("btn-zoom-in", () => {
+    bindZoom("btn-zoom-in", () => {
         _userHasZoomed = true;
         currentZoomScale = _clampZoom(currentZoomScale + ZOOM_STEP);
         applyZoomToCanvas(document.getElementById("pdf-canvas"));
     });
 
-    bindDualZoom("btn-zoom-out", () => {
+    bindZoom("btn-zoom-out", () => {
         _userHasZoomed = true;
         currentZoomScale = _clampZoom(currentZoomScale - ZOOM_STEP);
         applyZoomToCanvas(document.getElementById("pdf-canvas"));
     });
 
-    bindDualZoom("btn-zoom-reset", () => {
+    bindZoom("btn-zoom-reset", () => {
         _userHasZoomed = false;
         const canvas = document.getElementById("pdf-canvas");
         currentZoomScale = _calcFitZoom(/** @type {HTMLCanvasElement} */ (canvas));
@@ -845,7 +1111,7 @@ function bindCanvasZoomControls() {
     applyZoomToCanvas(document.getElementById("pdf-canvas"));
 }
 
-export function initPagination(fullData) {
+function initPagination(fullData) {
     globalPayload = fullData;
     currentActivePageIndex = 0;
 
@@ -853,15 +1119,15 @@ export function initPagination(fullData) {
         page.blocks.forEach(block => normalizeBlock(block));
     });
     
-    const paginators = [document.getElementById("pagination-controls"), document.getElementById("pagination-controls-top")];
-    paginators.forEach(p => { if (p) p.hidden = false; });
-    
-    const bindDualPage = (baseId, handler) => {
-        const els = [document.getElementById(baseId), document.getElementById(`${baseId}-top`)];
-        els.forEach(el => { if (el) el.onclick = handler; });
+    const paginator = document.getElementById("pagination-controls");
+    if (paginator) paginator.hidden = false;
+
+    const bindPage = (id, handler) => {
+        const el = document.getElementById(id);
+        if (el) el.onclick = handler;
     };
 
-    bindDualPage("btn-prev", () => {
+    bindPage("btn-prev", () => {
         if (currentActivePageIndex > 0) {
             currentActivePageIndex--;
             cycleViewEngine();
@@ -898,8 +1164,47 @@ export function initPagination(fullData) {
             cycleViewEngine(); 
         };
     }
+
+    // Feature Goma Mágica: Caja interactiva para inpaint local reiterado
+    const btnAddEraser = document.getElementById("btn-add-eraser");
+    if (btnAddEraser) {
+        btnAddEraser.onclick = () => {
+            const currentPage = globalPayload?.pages?.[currentActivePageIndex];
+            if (!currentPage) return;
+            const currentBlocks = currentPage.blocks;
+            const canvas = document.getElementById("pdf-canvas");
+            const cw = canvas ? canvas.width : 800;
+            const ch = canvas ? canvas.height : 600;
+            const ew = 200;
+            const eh = 90;
+            const x0 = Math.max(30, Math.round((cw - ew) / 2));
+            const y0 = Math.max(30, Math.round((ch - eh) / 2));
+
+            const eraserBlock = {
+                id: "eraser-" + Date.now(),
+                page: currentActivePageIndex,
+                bbox: [x0, y0, x0 + ew, y0 + eh],
+                text: "",
+                confidence: 1.0,
+                is_eraser: true,
+                is_modified: false,
+                bg_transparent: true,
+                source: "eraser"
+            };
+
+            currentBlocks.push(eraserBlock);
+            currentTargetBlock = eraserBlock;
+            saveToUndoStack();
+            cycleViewEngine();
+            _syncEraserToolbarState();
+        };
+    }
+    _bindEraserActions();
+    _syncEraserToolbarState();
     
     // Listener para Ctrl+Z (Undo) y Ctrl+Y (Redo)
+    if (_globalShortcutsMounted) return;
+    _globalShortcutsMounted = true;
     document.addEventListener("keydown", (evt) => {
         if ((evt.ctrlKey || evt.metaKey) && evt.key === 'z' && !evt.shiftKey) {
             evt.preventDefault();
@@ -950,36 +1255,48 @@ export function initPagination(fullData) {
         };
     }
     
-    // Lógica para ✨ Limpiar Fondo
+    // Lógica para Limpiar Fondo (Selectivo o Página Completa con OpenCV)
     const btnCleanBg = document.getElementById("btn-clean-bg");
     if (btnCleanBg) {
         btnCleanBg.onclick = async () => {
             const key = document.getElementById("ai-api-key")?.value?.trim();
-            const selectedMode = cleanModeSelect?.value || "auto";
-            const useCloud = selectedMode === "cloud" || (selectedMode === "auto" && !!key);
+            const selectedMode = cleanModeSelect?.value || "local";
+            const useCloud = selectedMode === "cloud" && !!key;
 
-            if (selectedMode === "cloud" && !key) {
-                alert("Modo Cloud seleccionado, pero no hay API Key. Añádela o cambia a Local/Auto.");
-                return;
+            const currentPage = globalPayload?.pages?.[currentActivePageIndex];
+            if (!currentPage || !currentPage.blocks) return;
+
+            const blocks = currentPage.blocks;
+
+            // Determinar bloques objetivo (selectivos o toda la página)
+            let targetBlocks = [];
+            let isSelective = false;
+
+            if (selectedBlockIndices.length > 0) {
+                targetBlocks = selectedBlockIndices
+                    .filter(idx => idx >= 0 && idx < blocks.length)
+                    .map(idx => blocks[idx]);
+                isSelective = true;
+            } else if (inlineEditorSession?.block) {
+                targetBlocks = [inlineEditorSession.block];
+                isSelective = true;
+            } else if (currentTargetBlock) {
+                targetBlocks = [currentTargetBlock];
+                isSelective = true;
+            } else {
+                targetBlocks = blocks;
             }
-            
-            const originalText = btnCleanBg.textContent;
-            btnCleanBg.textContent = useCloud ? "⏳ Limpiando en AI Studio..." : "⏳ Limpiando localmente...";
-            btnCleanBg.disabled = true;
-            
-            const currentPage = globalPayload.pages[currentActivePageIndex];
-            
-            try {
-                const endpoint = useCloud
-                    ? "http://localhost:8000/api/v1/clean-background"
-                    : "http://localhost:8000/api/v1/clean-background-local";
 
-                const localBoxes = (currentPage.blocks || [])
+            _setBtnLabel(btnCleanBg, isSelective ? "Limpiando selección…" : "Limpiando fondo…");
+            btnCleanBg.disabled = true;
+
+            try {
+                const localBoxes = targetBlocks
                     .filter(b => Array.isArray(b.bbox) && b.bbox.length === 4)
                     .map(b => ({ bbox: b.bbox }));
 
                 if (!useCloud && localBoxes.length === 0) {
-                    throw new Error("No hay bloques con coordenadas para limpiar en modo local.");
+                    throw new Error("No hay bloques con coordenadas válidas para limpiar.");
                 }
 
                 const payload = useCloud
@@ -992,39 +1309,28 @@ export function initPagination(fullData) {
                         boxes: localBoxes
                     };
 
-                const resp = await fetch(endpoint, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload)
-                });
-                
-                if (!resp.ok) {
-                    const err = await resp.json().catch(()=>({}));
-                    throw new Error(err.detail || `Error HTTP ${resp.status}`);
-                }
-                
-                const data = await resp.json();
-                
+                const data = await window.dbvApi.cleanBackground(payload, useCloud);
+
                 // Guardar rollback
                 saveToUndoStack();
-                
+
                 // Actualizar imagen y re-renderizar
                 currentPage.image_base64 = "data:image/png;base64," + data.image_base64;
                 currentPage.ai_cleaned_bg = true;
-                
-                // Convertir todos los textos a editables con fondo transparente para que se vean sobre el nuevo fondo
-                currentPage.blocks.forEach(block => {
+
+                // Convertir ÚNICAMENTE los bloques objetivo a editables con fondo transparente
+                targetBlocks.forEach(block => {
                     block.is_modified = true;
                     block.bg_transparent = true;
                 });
-                
+
                 cycleViewEngine();
-                
+
             } catch (err) {
                 alert(`Error al limpiar fondo: ${err.message}`);
             } finally {
-                btnCleanBg.textContent = originalText;
                 btnCleanBg.disabled = false;
+                updateCleanBgButtonLabel();
             }
         };
     }
@@ -1040,17 +1346,17 @@ export function initPagination(fullData) {
 function cycleViewEngine() {
     _closeInlineEditor(true);
 
-    const indicators = [document.getElementById("page-indicator"), document.getElementById("page-indicator-top")];
-    indicators.forEach(indicator => {
-        if (indicator) {
-            indicator.textContent = `Página ${currentActivePageIndex + 1} de ${globalPayload.total_pages}`;
-        }
-    });
+    const indicator = document.getElementById("page-indicator");
+    if (indicator) {
+        indicator.textContent = `Página ${currentActivePageIndex + 1} de ${globalPayload.total_pages}`;
+    }
+    window.dbvShell?.setPage(currentActivePageIndex + 1, globalPayload.total_pages);
     // Ocultar barra flotante al ciclar la página para evitar solapamientos
     document.getElementById("floating-toolbar").hidden = true;
     document.getElementById("multi-toolbar").hidden = true;
     selectedBlockIndices = []; // Limpiar multi-selección al cambiar de página
     selectionMarquee = null;
+    updateCleanBgButtonLabel();
     
     renderNativeCanvasEditor(globalPayload.pages[currentActivePageIndex]);
 }
@@ -1103,7 +1409,13 @@ function paintCanvasLayers(ctx, canvas, background, blocks) {
         const [x0, y0, x1, y1] = block.bbox;
         const width = x1 - x0;
         const height = y1 - y0;
-        
+
+        if (block.is_eraser) {
+            drawNataEraser(ctx, block.bbox, block === currentTargetBlock);
+            drawResizeHandles(ctx, block.bbox);
+            return;
+        }
+
         if (block.is_modified) {
             // Fondo Sobreescrito (Color inyectable guiado del Front o blanco estricto MVP)
             if (!block.bg_transparent) {
@@ -1286,10 +1598,17 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
         };
     }
 
+    function _findTopmostBlockIndex(predicate) {
+        for (let i = blocks.length - 1; i >= 0; i--) {
+            if (predicate(blocks[i], i, blocks)) return i;
+        }
+        return -1;
+    }
+
     canvas.addEventListener("dblclick", (evt) => {
         if (evt.button !== 0) return;
         const physical = getPhysicalCoords(evt);
-        const clickedIdx = blocks.findIndex(block => {
+        const clickedIdx = _findTopmostBlockIndex(block => {
             const [x0, y0, x1, y1] = block.bbox;
             return (physical.x >= x0 && physical.x <= x1 && physical.y >= y0 && physical.y <= y1);
         });
@@ -1310,7 +1629,7 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
 
         // ── Ctrl+Click: modo multi-selección ──
         if (evt.ctrlKey) {
-            const clickedIdx = blocks.findIndex(b => {
+            const clickedIdx = _findTopmostBlockIndex(b => {
                 const [x0, y0, x1, y1] = b.bbox;
                 return physical.x >= x0 && physical.x <= x1 && physical.y >= y0 && physical.y <= y1;
             });
@@ -1338,8 +1657,8 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
             paintCanvasLayers(ctx, canvas, bgImage, blocks);
         }
 
-        // 1. Comprobar handles de resize (bloques modificados o bloque seleccionado)
-        for (let i = 0; i < blocks.length; i++) {
+        // 1. Comprobar handles de resize (recorrer desde el bloque superior hacia el fondo)
+        for (let i = blocks.length - 1; i >= 0; i--) {
             if (!_isResizeInteractiveBlock(blocks[i])) continue;
             const h = getResizeHandle(physical, blocks[i]);
             if (h) {
@@ -1351,8 +1670,8 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
             }
         }
 
-        // 2. Comprobar si el clic cae dentro de un bloque
-        dragTargetIndex = blocks.findIndex(block => {
+        // 2. Comprobar si el clic cae dentro de un bloque (priorizar el bloque superior)
+        dragTargetIndex = _findTopmostBlockIndex(block => {
             const [x0, y0, x1, y1] = block.bbox;
             return (physical.x >= x0 && physical.x <= x1 &&
                     physical.y >= y0 && physical.y <= y1);
@@ -1401,7 +1720,7 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
         // ── Redimensionando ──
         if (isResizing && resizeTargetIndex !== -1) {
             dragHasMoved = true;
-            document.getElementById("floating-toolbar").hidden = true;
+            _hideFloatingToolbar();
             const block = blocks[resizeTargetIndex];
             let [x0, y0, x1, y1] = block.bbox;
 
@@ -1419,7 +1738,7 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
         // ── Desplazando bloque ──
         if (isDragging && dragTargetIndex !== -1) {
             dragHasMoved = true;
-            document.getElementById("floating-toolbar").hidden = true;
+            _hideFloatingToolbar();
 
             const block = blocks[dragTargetIndex];
             const w = block.bbox[2] - block.bbox[0];
@@ -1433,8 +1752,9 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
             return;
         }
 
-        // ── Solo hover: ajustar cursor ──
-        for (const b of blocks) {
+        // ── Solo hover: ajustar cursor desde el bloque superior ──
+        for (let i = blocks.length - 1; i >= 0; i--) {
+            const b = blocks[i];
             if (!_isResizeInteractiveBlock(b)) continue;
             const h = getResizeHandle(physical, b);
             if (h) { canvas.style.cursor = HANDLE_CURSORS[h]; return; }
@@ -1465,6 +1785,7 @@ function mountInteractionLayer(canvas, ctx, bgImage, blocks) {
             }
 
             paintCanvasLayers(ctx, canvas, bgImage, blocks);
+            updateCleanBgButtonLabel();
 
             if (selectedBlockIndices.length >= 2) {
                 triggerMultiSelectToolbar(blocks, selectedBlockIndices, evt.clientX, evt.clientY);
@@ -1832,7 +2153,7 @@ function mergeSelectedBlocks(blocks, selectedIndices) {
     cycleViewEngine();
 }
 
-export function mountExportControls(fullPayload) {
+function mountExportControls(fullPayload) {
     const btnExport = document.getElementById("btn-export");
     if (!btnExport) return;
 
@@ -1860,7 +2181,7 @@ export function mountExportControls(fullPayload) {
     
     // Sobreescritura en caso de llamadas iterativas Paginadas
     btnExport.onclick = async () => {
-        const originalText = btnExport.textContent;
+        const originalText = _getBtnLabel(btnExport);
         const exportPdf = !!exportPdfInput.checked;
         const exportPptx = !!exportPptxInput.checked;
         const exportMd = !!exportMdInput.checked;
@@ -1876,7 +2197,7 @@ export function mountExportControls(fullPayload) {
             exportMd ? "MD" : null
         ].filter(Boolean).join("/");
 
-        btnExport.textContent = `⏳ Generando ${selectedLabels}...`;
+        _setBtnLabel(btnExport, `Generando ${selectedLabels}…`);
         btnExport.disabled = true;
         
         const exportModeSelect = document.getElementById("export-mode-select");
@@ -1891,15 +2212,20 @@ export function mountExportControls(fullPayload) {
         saveExportTargetsPreference(fullPayload.export_targets);
         
         try {
-            const resp = await fetch("http://localhost:8000/api/v1/export", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(fullPayload)
-            });
-            
-            if (!resp.ok) throw new Error(`[ERR] HTTP ${resp.status}`);
-            
-            const blob = await resp.blob();
+            // Sanitizar payload eliminando bloques de goma efímeros. Copia
+            // superficial: las imágenes base64 de cada página se comparten por
+            // referencia en lugar de serializarse y volverse a parsear enteras.
+            const sanitizedPayload = {
+                ...fullPayload,
+                pages: fullPayload.pages.map(page => ({
+                    ...page,
+                    blocks: (page.blocks || []).filter(
+                        b => !b.is_eraser && (b.text || "").trim().length > 0
+                    )
+                }))
+            };
+
+            const blob = await window.dbvApi.exportDocument(sanitizedPayload);
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.style.display = "none";
@@ -1912,7 +2238,7 @@ export function mountExportControls(fullPayload) {
         } catch(err) {
             alert(`[Error API]: ${err.message}`);
         } finally {
-            btnExport.textContent = originalText;
+            _setBtnLabel(btnExport, originalText);
             btnExport.disabled = false;
         }
     };
@@ -1921,7 +2247,9 @@ export function mountExportControls(fullPayload) {
 /**
  * Vincula atajos de teclado globales (Ctrl+Z, Ctrl+Y).
  */
-export function mountKeyboardShortcuts() {
+function mountKeyboardShortcuts() {
+    if (_undoShortcutsMounted) return;
+    _undoShortcutsMounted = true;
     window.addEventListener("keydown", (e) => {
         const isCtrl = e.ctrlKey || e.metaKey;
         const activeElement = document.activeElement;
@@ -1959,3 +2287,9 @@ export function mountKeyboardShortcuts() {
     if (btnUndo) btnUndo.onclick = performUndo;
     if (btnRedo) btnRedo.onclick = performRedo;
 }
+
+window.dbvCanvasEngine = {
+    initPagination,
+    mountKeyboardShortcuts
+};
+})();

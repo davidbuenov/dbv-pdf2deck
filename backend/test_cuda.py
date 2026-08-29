@@ -1,5 +1,7 @@
-import torch
 import sys
+
+import torch
+
 
 def check_cuda():
     print("=== DBVPDFEditor - Diagnóstico GPU ===")

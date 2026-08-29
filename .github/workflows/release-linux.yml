@@ -1,0 +1,82 @@
+name: Release Linux
+
+# Construye los paquetes .deb y .AppImage para Linux y los adjunta como
+# borrador de GitHub Release en cada tag vX.Y.Z. Sin firma ni auto-
+# actualización — ver dbv-specs-ops/docs/NATIVE_APPS_RELEASE_CI.md §8/§6.
+#
+# .deb registra la asociación de tipo de archivo de forma declarativa
+# (bundle.fileAssociations); .AppImage NO se integra ni asocia archivos
+# automáticamente sin una herramienta externa (AppImageLauncher) — es una
+# limitación del propio formato, no de este workflow. Ver
+# dbv-specs-ops/docs/NATIVE_DESKTOP_APPS.md §5.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: >
+          "true" (normal): crea/usa un borrador para esa versión. "false": la Release de esa
+          versión ya está PUBLICADA y solo quieres añadirle artefactos de esta plataforma.
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Leer versión de tauri.conf.json
+        id: version
+        run: echo "tag=v$(node -p "require('./src-tauri/tauri.conf.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Determinar si la Release debe crearse/tratarse como borrador
+        id: draft
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ github.event.inputs.draft }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Instalar dependencias del sistema (WebKitGTK)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      - name: Instalar Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Construir sidecar Python
+        run: |
+          python3 -m venv .venv-sidecar
+          .venv-sidecar/bin/python -m pip install -r packaging/requirements-sidecar.txt
+          .venv-sidecar/bin/python packaging/build_sidecar.py --target-triple x86_64-unknown-linux-gnu
+
+      - name: Instalar dependencias de Node
+        run: npm install
+
+      - name: Build y Release (Linux)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ steps.version.outputs.tag }}
+          releaseName: ${{ steps.version.outputs.tag }}
+          releaseDraft: ${{ steps.draft.outputs.value }}
+          prerelease: false
+          includeUpdaterJson: false

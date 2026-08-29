@@ -8,11 +8,12 @@ Motor de visión subyacente basado en EasyOCR para la extracción de texto desco
 Acoplado bajo normativas estrictas del proyecto: Tipado fuerte y Patrón Result.
 """
 import uuid
-import numpy as np
 from dataclasses import dataclass, field
+
+import numpy as np
 from PIL import Image
 
-from .result import Result, Ok, Err
+from .result import Err, Ok, Result
 
 try:
     import easyocr
@@ -167,7 +168,7 @@ def analyze_image(page_num: int, image: Image.Image) -> Result[list[OCRBlock]]:
 
     Args:
         page_num (int): Identificador secuencial de la página analizada.
-        image (Image.Image): Representación matricial de la página provista por PyMuPDF.
+        image (Image.Image): Representación matricial de la página renderizada para OCR.
 
     Returns:
         Result[list[OCRBlock]]: Lista inmutable de bloques detectados si es Ok[T],

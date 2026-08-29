@@ -5,6 +5,9 @@
 
 > Open Source · Sin dependencias de nube · Aceleración GPU opcional
 
+La migración a aplicación de escritorio nativa con Tauri v2 está en curso. El modo web local se
+mantiene disponible durante la transición.
+
 [![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-green?logo=fastapi)](https://fastapi.tiangolo.com)
 [![EasyOCR](https://img.shields.io/badge/OCR-EasyOCR%20%2B%20PyTorch-orange)](https://github.com/JaidedAI/EasyOCR)

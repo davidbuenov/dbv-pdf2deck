@@ -7,18 +7,22 @@
 Módulo responsable de procesar archivos PDF, extraer información básica
 como presencia de texto por página, y renderizar su lienzo a imágenes rasterizadas.
 """
+from __future__ import annotations
+
+import collections
+import ctypes
+import re
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
-import fitz  # PyMuPDF
+import pypdfium2 as pdfium
+import pypdfium2.raw as pdfium_raw
 from PIL import Image, ImageOps
-import uuid
 
-from .result import Err, Ok, Result
 from .ocr_engine import OCRBlock
+from .result import Err, Ok, Result
 from .settings import MAX_IMAGE_SIDE_PX, MAX_IMAGE_TOTAL_PIXELS
-
 
 SUPPORTED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
@@ -31,8 +35,8 @@ def _clean_font_name(raw: str) -> str:
     import re as _re
     # Tomar solo la parte antes del primer guión (elimina -Bold, -BoldMT, -Italic, etc.)
     base = _re.split(r'[-,]', raw)[0]
-    # Eliminar sufijos pegados al nombre de familia (sin guión)
-    base = _re.sub(r'(MT|PS)$', '', base).strip()
+    # Eliminar sufijos pegados al nombre de familia (sin guión) como MT, PS, PSMT
+    base = _re.sub(r'(MT|PS)+$', '', base).strip()
     # Remapear nombres compuestos comunes a su forma legible
     _REMAP = {
         "timesnewroman": "Times New Roman",
@@ -76,241 +80,155 @@ class PDFDocumentContext:
     pages: list[PageRender]
 
 
-def process_pdf_file(file_path: Path, dpi: int = 150) -> Result[PDFDocumentContext]:
-    """
-    Toma un archivo PDF alojado en sistema, averigua sus características
-    e intenta renderizar por lotes sus páginas con la resolución exigida.
+def _clean_pdfium_font_name(raw: str) -> str:
+    if len(raw) > 7 and raw[6] == "+":
+        raw = raw[7:]
+    return _clean_font_name(raw)
 
-    Este proceso está sujeto a la integridad estructural del documento analizado.
 
-    Args:
-        file_path (Path): Ruta física objetiva hacia el archivo PDF a leer.
-        dpi (int, opcional): Resolución (Dots Per Inch) de la imagen resultante final. Por defecto 150.
+def _pdfium_font_info(text_page: object, char_index: int) -> tuple[str, int]:
+    raw_text_page = text_page.raw
+    buffer = ctypes.create_string_buffer(256)
+    flags = ctypes.c_int(0)
+    length = pdfium_raw.FPDFText_GetFontInfo(
+        raw_text_page, char_index, buffer, 256, ctypes.byref(flags)
+    )
+    font_name = buffer.raw[: max(0, length - 1)].decode("utf-8", "replace") if length > 0 else ""
+    return font_name, flags.value
 
-    Returns:
-        Result[PDFDocumentContext]: Objeto contenedor con el esquema renderizado validado,
-        o una justificación de error contextualmente atrapada en caso de fallo crítico de lectura.
-    """
-    resultado: Result[PDFDocumentContext]
 
-    if not file_path.exists():
-        resultado = Err(f"El archivo especificado no existe o la ruta es inválida: {file_path}")
-    elif not file_path.is_file() or file_path.suffix.lower() != ".pdf":
-        resultado = Err(f"La ruta no apunta a un archivo de formato de extensión PDF válido: {file_path}")
-    else:
-        try:
-            pages_data: list[PageRender] = []
-            
-            # Context manager imperativo para librerar de forma segura los punteros en C de PyMuPDF
-            with fitz.open(str(file_path)) as pdf_document:
-                total_pages: int = len(pdf_document)
-                
-                import re
-                
-                # Iteramos todas las páginas, determinamos si hay texto nativo del formato y generamos canvas
-                for page_index in range(total_pages):
-                    page: fitz.Page = pdf_document[page_index]
-                    
-                    raw_text_content = page.get_text()
-                    text_content: str = raw_text_content if isinstance(raw_text_content, str) else ""
-                    # NotebookLM a veces deja espacios o metadatos vectoriales. Solo saltamos el OCR
-                    # si hay más de 20 letras o números sólidos, asegurando que valga la pena no usar OCR.
-                    caracteres_puros = re.sub(r'[\W_]+', '', text_content)
-                    has_native_text: bool = len(caracteres_puros) > 20
-                    
-                    zoom_factor: float = dpi / 72.0
-                    matrix = fitz.Matrix(zoom_factor, zoom_factor)
-                    pixmap: fitz.Pixmap = page.get_pixmap(matrix=matrix, alpha=False)
-                    pixel_count = int(pixmap.width) * int(pixmap.height)
-                    if int(pixmap.width) > MAX_IMAGE_SIDE_PX or int(pixmap.height) > MAX_IMAGE_SIDE_PX:
-                        resultado = Err(
-                            (
-                                f"La página {page_index + 1} excede el tamaño máximo permitido "
-                                f"({pixmap.width}x{pixmap.height}px). "
-                                f"Límite por lado: {MAX_IMAGE_SIDE_PX}px."
-                            )
-                        )
-                        return resultado
-                    if pixel_count > MAX_IMAGE_TOTAL_PIXELS:
-                        resultado = Err(
-                            (
-                                f"La página {page_index + 1} excede el máximo de píxeles permitidos "
-                                f"({pixel_count:,} px). Límite: {MAX_IMAGE_TOTAL_PIXELS:,} px."
-                            )
-                        )
-                        return resultado
-                    
-                    native_blocks_list = None
-                    if has_native_text:
-                        native_blocks_list = []
-                        import collections
-                        
-                        # Obtener todas las formas (rectangles, líneas, etc.) para mapear colores de fondo
-                        all_shapes = page.get_drawings()
-                        shape_rects = []  # [(rect, fill_color), ...]
-                        for shape in all_shapes:
-                            if shape.get("type") == "f" and shape.get("fill"):  # tipo 'f' = filled
-                                rect = shape.get("rect")
-                                fill = shape.get("fill")
-                                if rect and fill:
-                                    shape_rects.append((rect, fill))
-                        
-                        raw_data_any = page.get_text("dict")
-                        raw_data: dict[str, Any] = raw_data_any if isinstance(raw_data_any, dict) else {}
-                        for b in raw_data.get("blocks", []):
-                            if b.get("type", -1) != 0:
-                                continue
-                            # Una línea = un bloque editable: preserva x0 de cada línea (sangría)
-                            for line in b.get("lines", []):
-                                font_sizes: list[float] = []
-                                font_names: list[str] = []
-                                text_colors: list[tuple[int, int, int]] = []
-                                bg_colors: list[tuple[int, int, int]] = []
-                                line_is_bold = False
-                                line_is_italic = False
-                                line_text = ""
+def _pdfium_char_color(text_page: object, char_index: int) -> tuple[int, int, int] | None:
+    raw_text_page = text_page.raw
+    red = ctypes.c_uint()
+    green = ctypes.c_uint()
+    blue = ctypes.c_uint()
+    alpha = ctypes.c_uint()
+    success = pdfium_raw.FPDFText_GetFillColor(
+        raw_text_page,
+        char_index,
+        ctypes.byref(red),
+        ctypes.byref(green),
+        ctypes.byref(blue),
+        ctypes.byref(alpha),
+    )
+    return (red.value, green.value, blue.value) if success else None
 
-                                for span in line.get("spans", []):
-                                    line_text += span.get("text", "")
-                                    font_sizes.append(float(span.get("size", 12.0)))
-                                    font_names.append(span.get("font", "system-ui"))
-                                    # PyMuPDF flags: bit 4 (16) = bold, bit 1 (2) = italic
-                                    flags = int(span.get("flags", 0))
-                                    if flags & 16:
-                                        line_is_bold = True
-                                    if flags & 2:
-                                        line_is_italic = True
-                                    
-                                    # Extraer color del texto (PyMuPDF devuelve como int o tupla)
-                                    color_raw = span.get("color", None)
-                                    if color_raw is not None:
-                                        if isinstance(color_raw, int):
-                                            # Color como entero hexadecimal
-                                            r = (color_raw >> 16) & 0xFF
-                                            g = (color_raw >> 8) & 0xFF
-                                            b = color_raw & 0xFF
-                                            text_colors.append((r, g, b))
-                                        elif isinstance(color_raw, (list, tuple)) and len(color_raw) >= 3:
-                                            r = int(color_raw[0] * 255) if isinstance(color_raw[0], float) else int(color_raw[0])
-                                            g = int(color_raw[1] * 255) if isinstance(color_raw[1], float) else int(color_raw[1])
-                                            b = int(color_raw[2] * 255) if isinstance(color_raw[2], float) else int(color_raw[2])
-                                            text_colors.append((r, g, b))
-                                    
-                                    # Extraer color de fondo (bgcolor) si existe
-                                    bgcolor_raw = span.get("bgcolor", None)
-                                    if bgcolor_raw is not None:
-                                        if isinstance(bgcolor_raw, int):
-                                            r = (bgcolor_raw >> 16) & 0xFF
-                                            g = (bgcolor_raw >> 8) & 0xFF
-                                            b = bgcolor_raw & 0xFF
-                                            bg_colors.append((r, g, b))
-                                        elif isinstance(bgcolor_raw, (list, tuple)) and len(bgcolor_raw) >= 3:
-                                            r = int(bgcolor_raw[0] * 255) if isinstance(bgcolor_raw[0], float) else int(bgcolor_raw[0])
-                                            g = int(bgcolor_raw[1] * 255) if isinstance(bgcolor_raw[1], float) else int(bgcolor_raw[1])
-                                            b = int(bgcolor_raw[2] * 255) if isinstance(bgcolor_raw[2], float) else int(bgcolor_raw[2])
-                                            bg_colors.append((r, g, b))
 
-                                line_text = line_text.strip()
-                                if not line_text:
-                                    continue
+def _pdfium_effective_font_size(text_page: object, char_index: int) -> float:
+    raw_text_page = text_page.raw
+    size = float(pdfium_raw.FPDFText_GetFontSize(raw_text_page, char_index))
+    matrix = pdfium_raw.FS_MATRIX()
+    if pdfium_raw.FPDFText_GetMatrix(raw_text_page, char_index, ctypes.byref(matrix)):
+        scale = (abs(matrix.b) ** 2 + abs(matrix.d) ** 2) ** 0.5
+        if scale > 0:
+            size *= scale
+    return size
 
-                                bbox = line.get("bbox", [0, 0, 0, 0])
-                                scaled_bbox = (
-                                    float(bbox[0]) * zoom_factor,
-                                    float(bbox[1]) * zoom_factor,
-                                    float(bbox[2]) * zoom_factor,
-                                    float(bbox[3]) * zoom_factor
-                                )
 
-                                avg_size = sum(font_sizes) / len(font_sizes) if font_sizes else 12.0
-                                scaled_font_size = avg_size * zoom_factor
-                                raw_font = collections.Counter(font_names).most_common(1)[0][0] if font_names else "system-ui"
-                                primary_font = _clean_font_name(raw_font)
-                                
-                                # Calcular color de texto predominante (en hexadecimal)
-                                text_color_hex = "#000000"  # default negro
-                                if text_colors:
-                                    avg_r = int(sum(c[0] for c in text_colors) / len(text_colors))
-                                    avg_g = int(sum(c[1] for c in text_colors) / len(text_colors))
-                                    avg_b = int(sum(c[2] for c in text_colors) / len(text_colors))
-                                    text_color_hex = f"#{avg_r:02x}{avg_g:02x}{avg_b:02x}"
-                                
-                                # Calcular color de fondo predominante (en hexadecimal)
-                                bg_color_hex = "#ffffff"  # default blanco
-                                if bg_colors:
-                                    avg_r = int(sum(c[0] for c in bg_colors) / len(bg_colors))
-                                    avg_g = int(sum(c[1] for c in bg_colors) / len(bg_colors))
-                                    avg_b = int(sum(c[2] for c in bg_colors) / len(bg_colors))
-                                    bg_color_hex = f"#{avg_r:02x}{avg_g:02x}{avg_b:02x}"
-                                else:
-                                    # Si no hay bgcolor en spans, buscar formas (rectangles) que intersecten
-                                    for shape_rect, shape_fill in shape_rects:
-                                        # Verificar si la forma intersecta con el bbox del texto
-                                        line_bbox = fitz.Rect(bbox)
-                                        if line_bbox.intersects(shape_rect):
-                                            # Convertir el color de la forma a RGB (0-255)
-                                            r = int(shape_fill[0] * 255)
-                                            g = int(shape_fill[1] * 255)
-                                            b = int(shape_fill[2] * 255)
-                                            bg_color_hex = f"#{r:02x}{g:02x}{b:02x}"
-                                            break  # Usar la primera forma que intersecta
+def _pdfium_loose_char_box(text_page: object, char_index: int) -> tuple[float, float, float, float] | None:
+    raw_text_page = text_page.raw
+    rect = pdfium_raw.FS_RECTF()
+    if not pdfium_raw.FPDFText_GetLooseCharBox(raw_text_page, char_index, ctypes.byref(rect)):
+        return None
+    return rect.left, rect.bottom, rect.right, rect.top
 
-                                # bbox_pt guarda las coords originales del PDF (sin escalar)
-                                # para que el exportador las use como zona de cobertura precisa.
-                                raw_bbox_pt = (
-                                    float(bbox[0]),
-                                    float(bbox[1]),
-                                    float(bbox[2]),
-                                    float(bbox[3])
-                                )
 
-                                native_blocks_list.append(OCRBlock(
-                                    id=str(uuid.uuid4()),
-                                    page=page_index,
-                                    bbox=scaled_bbox,
-                                    text=line_text,
-                                    confidence=1.0,
-                                    is_new=False,
-                                    font_size=scaled_font_size,
-                                    font_family=primary_font,
-                                    is_bold=line_is_bold,
-                                    is_italic=line_is_italic,
-                                    bbox_pt=raw_bbox_pt,
-                                    text_color_hex=text_color_hex,
-                                    bg_color_hex=bg_color_hex
-                                ))
-                    
-                    img_mode: str = "RGB" if pixmap.n < 4 else "RGBA"
-                    pil_image: Image.Image = Image.frombytes(
-                        img_mode,
-                        (pixmap.width, pixmap.height),
-                        pixmap.samples
-                    )
-                    
-                    pages_data.append(PageRender(
-                        page_num=page_index,
-                        image=pil_image,
-                        has_native_text=has_native_text,
-                        native_blocks=native_blocks_list,
-                        page_width_pt=float(page.rect.width),
-                        page_height_pt=float(page.rect.height),
-                        render_width_px=float(pixmap.width),
-                        render_height_px=float(pixmap.height)
-                    ))
-                    
-                context = PDFDocumentContext(
-                    filename=file_path.name,
-                    total_pages=total_pages,
-                    pages=pages_data
-                )
-                resultado = Ok(context)
-                
-        except fitz.FileDataError as e:
-            resultado = Err(f"El analizador reporta archivo PDF corrupto o con error profundo interno: {e!s}")
-        except Exception as e:
-            resultado = Err(f"Fallo inesperado del sistema al transformar el PDF: {e!s}")
+def _pdfium_native_lines(page: object, page_height_pt: float) -> list[dict[str, object]]:
+    text_page = page.get_textpage()
+    raw_text_page = text_page.raw
+    char_count = pdfium_raw.FPDFText_CountChars(raw_text_page)
+    chars: list[dict[str, object]] = []
+    for char_index in range(char_count):
+        unicode_value = pdfium_raw.FPDFText_GetUnicode(raw_text_page, char_index)
+        char_box = _pdfium_loose_char_box(text_page, char_index)
+        if char_box is None:
+            continue
+        font_name, font_flags = _pdfium_font_info(text_page, char_index)
+        chars.append({
+            "ch": chr(unicode_value) if unicode_value else "",
+            "box": char_box,
+            "size": _pdfium_effective_font_size(text_page, char_index),
+            "weight": int(pdfium_raw.FPDFText_GetFontWeight(raw_text_page, char_index)),
+            "font": font_name,
+            "font_flags": font_flags,
+            "color": _pdfium_char_color(text_page, char_index),
+        })
 
-    return resultado
+    lines: list[dict[str, object]] = []
+
+    def flush(group: list[dict[str, object]]) -> None:
+        visible_group = [char for char in group if char["ch"] not in ("\r", "\n")]
+        text = "".join(str(char["ch"]) for char in visible_group).strip()
+        if not text:
+            return
+        solid = [
+            char for char in visible_group
+            if float(char["box"][3]) - float(char["box"][1]) > 0.0
+        ] or visible_group
+        x0 = min(float(char["box"][0]) for char in visible_group)
+        x1 = max(float(char["box"][2]) for char in visible_group)
+        y_bottom = min(float(char["box"][1]) for char in solid)
+        y_top = max(float(char["box"][3]) for char in solid)
+        sizes = [float(char["size"]) for char in solid if float(char["size"]) > 0]
+        names = [str(char["font"]) for char in solid if char["font"]]
+        raw_font = collections.Counter(names).most_common(1)[0][0] if names else "system-ui"
+        max_weight = max((int(char["weight"]) for char in visible_group), default=0)
+        has_force_bold = any(int(char["font_flags"]) & (1 << 18) for char in visible_group)
+        lower_font = raw_font.lower()
+        name_says_bold = any(token in lower_font for token in ("bold", "black", "heavy"))
+        name_says_style = name_says_bold or any(
+            token in lower_font for token in ("italic", "oblique", "regular", "light", "medium")
+        )
+        bold = name_says_bold or has_force_bold if name_says_style else max_weight >= 600
+        italic = any(int(char["font_flags"]) & (1 << 6) for char in visible_group)
+        italic = italic or "italic" in lower_font or "oblique" in lower_font
+        colors = [char["color"] for char in visible_group if char["color"]]
+        text_color = "#000000"
+        if colors:
+            r = int(sum(color[0] for color in colors) / len(colors))
+            g = int(sum(color[1] for color in colors) / len(colors))
+            b = int(sum(color[2] for color in colors) / len(colors))
+            text_color = f"#{r:02x}{g:02x}{b:02x}"
+        lines.append({
+            "text": text,
+            "bbox": [x0, page_height_pt - y_top, x1, page_height_pt - y_bottom],
+            "font": _clean_pdfium_font_name(raw_font),
+            "size": sum(sizes) / len(sizes) if sizes else 12.0,
+            "bold": bold,
+            "italic": italic,
+            "text_color": text_color,
+        })
+
+    current: list[dict[str, object]] = []
+    previous_baseline: float | None = None
+    previous_x1: float | None = None
+    for char in chars:
+        value = str(char["ch"])
+        if value in ("\r", "\n"):
+            flush(current)
+            current = []
+            previous_baseline = None
+            previous_x1 = None
+            continue
+        char_box = char["box"]
+        char_height = float(char_box[3]) - float(char_box[1])
+        if char_height <= 0.0:
+            current.append(char)
+            continue
+        baseline = float(char_box[1])
+        size = float(char["size"])
+        split = previous_baseline is not None and abs(baseline - previous_baseline) > max(1.0, size * 0.4)
+        if not split and previous_x1 is not None:
+            split = float(char_box[0]) - previous_x1 > max(2.0, size)
+        if split:
+            flush(current)
+            current = []
+        current.append(char)
+        previous_baseline = baseline
+        previous_x1 = float(char_box[2])
+    flush(current)
+    return lines
+
 
 
 def process_image_file(file_path: Path, dpi: int = 150) -> Result[PDFDocumentContext]:
@@ -341,19 +259,19 @@ def process_image_file(file_path: Path, dpi: int = 150) -> Result[PDFDocumentCon
             pixel_count = int(page_image.width) * int(page_image.height)
             if int(page_image.width) > MAX_IMAGE_SIDE_PX or int(page_image.height) > MAX_IMAGE_SIDE_PX:
                 resultado = Err(
-                    (
+                    
                         f"La imagen excede el tamaño máximo permitido "
                         f"({page_image.width}x{page_image.height}px). "
                         f"Límite por lado: {MAX_IMAGE_SIDE_PX}px."
-                    )
+                    
                 )
                 return resultado
             if pixel_count > MAX_IMAGE_TOTAL_PIXELS:
                 resultado = Err(
-                    (
+                    
                         f"La imagen excede el máximo de píxeles permitidos "
                         f"({pixel_count:,} px). Límite: {MAX_IMAGE_TOTAL_PIXELS:,} px."
-                    )
+                    
                 )
                 return resultado
 
@@ -380,6 +298,83 @@ def process_image_file(file_path: Path, dpi: int = 150) -> Result[PDFDocumentCon
         except Exception as e:
             resultado = Err(f"Fallo inesperado del sistema al transformar la imagen: {e!s}")
 
+    return resultado
+
+
+def process_pdf_file(file_path: Path, dpi: int = 150) -> Result[PDFDocumentContext]:
+    """Lee y rasteriza un PDF usando PDFium, preservando el contrato del pipeline."""
+    resultado: Result[PDFDocumentContext]
+    if not file_path.exists():
+        resultado = Err(f"El archivo especificado no existe o la ruta es inválida: {file_path}")
+    elif not file_path.is_file() or file_path.suffix.lower() != ".pdf":
+        resultado = Err(f"La ruta no apunta a un archivo de formato de extensión PDF válido: {file_path}")
+    else:
+        try:
+            document = pdfium.PdfDocument(str(file_path))
+            pages_data: list[PageRender] = []
+            zoom_factor = dpi / 72.0
+            for page_index in range(len(document)):
+                page = document[page_index]
+                page_width_pt = float(page.get_width())
+                page_height_pt = float(page.get_height())
+                text_page = page.get_textpage()
+                raw_text = text_page.get_text_bounded() or ""
+                native_text = re.sub(r"[\W_]+", "", raw_text)
+                has_native_text = len(native_text) > 20
+                native_lines = _pdfium_native_lines(page, page_height_pt) if has_native_text else []
+                rendered_image = page.render(scale=zoom_factor).to_pil().convert("RGB")
+                pixel_count = rendered_image.width * rendered_image.height
+                if rendered_image.width > MAX_IMAGE_SIDE_PX or rendered_image.height > MAX_IMAGE_SIDE_PX:
+                    resultado = Err(
+                        f"La página {page_index + 1} excede el tamaño máximo permitido "
+                        f"({rendered_image.width}x{rendered_image.height}px). "
+                        f"Límite por lado: {MAX_IMAGE_SIDE_PX}px."
+                    )
+                    document.close()
+                    return resultado
+                if pixel_count > MAX_IMAGE_TOTAL_PIXELS:
+                    resultado = Err(
+                        f"La página {page_index + 1} excede el máximo de píxeles permitidos "
+                        f"({pixel_count:,} px). Límite: {MAX_IMAGE_TOTAL_PIXELS:,} px."
+                    )
+                    document.close()
+                    return resultado
+
+                blocks: list[OCRBlock] | None = None
+                if has_native_text:
+                    blocks = []
+                    for line in native_lines:
+                        bbox_pt = tuple(float(value) for value in line["bbox"])
+                        scaled_bbox = tuple(value * zoom_factor for value in bbox_pt)
+                        blocks.append(OCRBlock(
+                            id=str(uuid.uuid4()),
+                            page=page_index,
+                            bbox=scaled_bbox,
+                            text=str(line["text"]),
+                            confidence=1.0,
+                            is_new=False,
+                            font_size=float(line["size"]) * zoom_factor,
+                            font_family=str(line["font"]),
+                            is_bold=bool(line["bold"]),
+                            is_italic=bool(line["italic"]),
+                            bbox_pt=bbox_pt,
+                            text_color_hex=str(line["text_color"]),
+                            bg_color_hex="#ffffff"
+                        ))
+                pages_data.append(PageRender(
+                    page_num=page_index,
+                    image=rendered_image,
+                    has_native_text=has_native_text,
+                    native_blocks=blocks,
+                    page_width_pt=page_width_pt,
+                    page_height_pt=page_height_pt,
+                    render_width_px=float(rendered_image.width),
+                    render_height_px=float(rendered_image.height)
+                ))
+            document.close()
+            resultado = Ok(PDFDocumentContext(file_path.name, len(pages_data), pages_data))
+        except Exception as error:
+            resultado = Err(f"Fallo inesperado del sistema al transformar el PDF: {error!s}")
     return resultado
 
 

@@ -1,0 +1,81 @@
+name: Release macOS
+
+# Construye el .dmg y el .app para macOS (sin firmar ni notarizar) y los
+# adjunta como borrador de GitHub Release en cada tag vX.Y.Z. Ver
+# dbv-specs-ops/docs/NATIVE_APPS_RELEASE_CI.md §8 sobre distribución sin
+# firma como estrategia legítima, y su checklist de Gatekeeper para el
+# usuario final.
+#
+# Build universal (--target universal-apple-darwin): el runner macos-latest
+# es Apple Silicon, así que sin esto el binario no arrancaría en un Mac Intel
+# (Rosetta traduce x86_64→Apple Silicon, no al revés). Ver
+# dbv-specs-ops/docs/NATIVE_APPS_RELEASE_CI.md §5.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: >
+          "true" (normal): crea/usa un borrador para esa versión. "false": la Release de esa
+          versión ya está PUBLICADA y solo quieres añadirle artefactos de esta plataforma.
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Leer versión de tauri.conf.json
+        id: version
+        run: echo "tag=v$(node -p "require('./src-tauri/tauri.conf.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Determinar si la Release debe crearse/tratarse como borrador
+        id: draft
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ github.event.inputs.draft }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Instalar Rust (targets Intel + Apple Silicon)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: "aarch64-apple-darwin,x86_64-apple-darwin"
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Construir sidecar Python
+        run: |
+          python3 -m venv .venv-sidecar
+          .venv-sidecar/bin/python -m pip install -r packaging/requirements-sidecar.txt
+          .venv-sidecar/bin/python packaging/build_sidecar.py --target-triple universal-apple-darwin
+
+      - name: Instalar dependencias de Node
+        run: npm install
+
+      - name: Build y Release (macOS)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --target universal-apple-darwin
+          tagName: ${{ steps.version.outputs.tag }}
+          releaseName: ${{ steps.version.outputs.tag }}
+          releaseDraft: ${{ steps.draft.outputs.value }}
+          prerelease: false
+          includeUpdaterJson: false

@@ -6,11 +6,10 @@
 """
 Configuración central del backend con soporte para variables de entorno y .env.
 """
-from pathlib import Path
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
-
 
 _BACKEND_DIR = Path(__file__).resolve().parents[1]
 _PROJECT_ROOT = _BACKEND_DIR.parent

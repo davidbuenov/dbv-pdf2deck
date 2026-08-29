@@ -11,145 +11,139 @@
     <meta name="description" content="DBV PDF2Deck — Convierte PDFs de solo imagen en presentaciones PowerPoint editables usando OCR local y un editor visual. 100% offline.">
     <title>DBV PDF2Deck | Convierte PDFs en PPTX editables</title>
     
-    <!-- Política Estricta asumiendo seguridad: Scripts/Estilos internos o self, sin execs sucios -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://localhost:8000; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: blob:;">
+    <!-- Política de Seguridad: Conexión a backend local en cualquier puerto asignado -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: blob:;">
     
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=2">
     
-    <!-- Archivo ESM instanciado puramente como Deferred Module -->
-    <script type="module" src="main.js?v=3" defer></script>
+    <script src="api.js?v=1" defer></script>
+    <script src="canvas_engine.js?v=6" defer></script>
+    <script src="main.js?v=5" defer></script>
+    <script src="desktop_shell.js?v=1" defer></script>
 </head>
 <body>
-    <header role="banner">
-        <h1>DBV PDF2Deck</h1>
-        <p>Convierte PDFs de solo imagen en presentaciones PowerPoint totalmente editables &mdash; con OCR local, sin nube, sin suscripciones.</p>
+    <!-- ══ BARRA SUPERIOR NATIVA ═══════════════════════════════════════════ -->
+    <header id="app-bar" role="banner">
+        <div class="bar-group">
+            <svg class="app-mark" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H12l4 4v3M4 5.5V18a2 2 0 0 0 2 2h5M15 20l3-3 3 3M18 17v5"></path></svg>
+            <h1 class="app-name">DBV PDF2Deck</h1>
+            <span class="bar-sep"></span>
+            <button id="btn-open-file" class="bar-btn" title="Abrir un PDF o una imagen"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v5h5M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path></svg></button>
+            <span id="doc-name" class="doc-name">Sin documento</span>
+            <span id="doc-badge" class="doc-badge" hidden></span>
+        </div>
+
+        <div class="bar-group" role="toolbar" aria-label="Herramientas de edición">
+            <button id="btn-add-box" class="bar-btn labeled" data-needs-doc disabled
+                    title="Añadir un cuadro de texto nuevo"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5h16v2M12 5v14M9 19h6"></path></svg><span class="btn-txt">Texto</span></button>
+            <button id="btn-add-eraser" class="bar-btn labeled eraser-btn" data-needs-doc data-active-on="eraser" disabled
+                    title="Coloca una goma sobre el documento para borrar fondos, marcas de agua o logos"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 20.5 3.9 15.9a2 2 0 0 1 0-2.8l9.2-9.2a2 2 0 0 1 2.8 0l4.6 4.6a2 2 0 0 1 0 2.8l-8 8H21M8.5 20.5H13M9 9l6.5 6.5"></path></svg><span class="btn-txt">Goma</span></button>
+            <span class="bar-sep"></span>
+            <button id="btn-eraser-clean" class="bar-btn labeled wand" data-needs-eraser disabled
+                    title="Borra lo que hay bajo la goma (púlsalo varias veces para refinar)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4V2M15 10V8M12.5 6h-2M19.5 6h-2M13.2 8.2 11.8 9.6M18.2 3.2l-1.4 1.4M13.2 3.8 11.8 2.4M3 21 14 10"></path></svg><span class="btn-txt">Borrar zona</span></button>
+            <button id="btn-eraser-delete" class="bar-btn" data-needs-eraser disabled
+                    title="Retirar la goma del documento"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+            <span class="bar-sep"></span>
+            <button id="btn-undo" class="bar-btn" data-needs-doc disabled title="Deshacer (Ctrl+Z)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5M4 9h9a6 6 0 0 1 0 12h-4"></path></svg></button>
+            <button id="btn-redo" class="bar-btn" data-needs-doc disabled title="Rehacer (Ctrl+Y)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5M20 9h-9a6 6 0 0 0 0 12h4"></path></svg></button>
+            <span class="bar-sep"></span>
+            <button id="btn-clean-bg" class="bar-btn labeled" data-needs-doc disabled
+                    title="Limpia el fondo de todos los cuadros de la página actual"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.7 6.7 8a7.5 7.5 0 1 0 10.6 0z"></path></svg><span class="btn-txt">Limpiar Fondo</span></button>
+        </div>
+
+        <div class="bar-group">
+            <div class="menu-wrap">
+                <button id="btn-export-menu" class="bar-btn labeled primary" data-needs-doc disabled
+                        aria-haspopup="true" aria-expanded="false" aria-controls="export-menu"
+                        title="Elegir formatos y descargar"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"></path></svg><span class="btn-txt">Exportar</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+                <div id="export-menu" class="popover" role="menu" hidden>
+                    <p class="popover-label">Qué se exporta</p>
+                    <select id="export-mode-select" title="Modo de exportación">
+                        <option value="only_modified">Solo los bloques modificados</option>
+                        <option value="all_editable">Todo el documento editable</option>
+                    </select>
+                    <div class="popover-sep"></div>
+                    <p class="popover-label">Formatos</p>
+                    <div class="format-list">
+                        <label><input type="checkbox" id="export-pptx" checked> <span>.pptx</span></label>
+                        <label><input type="checkbox" id="export-pdf" checked> <span>.pdf</span></label>
+                        <label><input type="checkbox" id="export-md" checked> <span>.md</span></label>
+                    </div>
+                    <button id="btn-export" class="bar-btn labeled primary block"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"></path></svg><span class="btn-txt">Descargar</span></button>
+                </div>
+            </div>
+            <span class="bar-sep"></span>
+            <button id="btn-always-on-top" class="bar-btn" hidden
+                    title="Fijar la ventana encima del resto"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5M8.5 12.5L5 14l7-7 7 7-3.5-1.5M8.5 12.5L7 6l5-2 5 2-1.5 6.5M8.5 12.5h7"></path></svg></button>
+            <button id="btn-about" class="bar-btn" title="Acerca de DBV PDF2Deck"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></button>
+        </div>
     </header>
 
-    <main role="main">
-        <section aria-labelledby="upload-heading">
-        <!-- Panel interactivo de Carga Modificado (Drag & Drop + Consola) -->
+    <p id="editor-hint" class="editor-hint" hidden>
+        Doble clic en un bloque para editarlo en sitio &middot; <strong>Ctrl</strong>+clic para
+        selección múltiple &middot; arrastra sobre una zona vacía para seleccionar por rectángulo.
+    </p>
+
+    <main role="main" id="app-main">
+        <!-- Panel de carga (Drag &amp; Drop + consola de progreso) -->
         <section id="upload-panel" aria-labelledby="upload-heading">
             <h2 id="upload-heading">Carga tu documento o imagen</h2>
-            <p>Arrastra una exportación de NotebookLM, una transparencia o una infografía (PDF/PNG/JPG/WEBP). Todo el procesamiento ocurre <strong>100% offline</strong> en tu ordenador.</p>
-            
+            <p>Arrastra una exportación de NotebookLM, una transparencia o una infografía (PDF/PNG/JPG/WEBP).
+               Todo el procesamiento ocurre <strong>100% offline</strong> en tu ordenador.</p>
+
             <div id="dropzone" class="dropzone-area" role="button" tabindex="0" aria-label="Área para soltar archivos PDF o imágenes">
                 <input type="file" id="pdf-upload" accept="application/pdf,image/png,image/jpeg,image/webp" hidden>
                 <div class="dropzone-content">
-                    <span class="icon" style="font-size: 3rem;">📄</span>
-                    <h3 style="margin-top: 1rem; color: var(--color-primary);">Arrastra tu archivo aquí</h3>
-                    <p style="color: #4a5568;">o haz clic para explorar tus archivos &mdash; soporta PDF, PNG, JPG/JPEG y WEBP</p>
+                    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v5h5M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path></svg>
+                    <h3>Arrastra aquí tu PDF o tu imagen</h3>
+                    <p>o haz clic para explorar &mdash; PDF &middot; PNG &middot; JPG &middot; WEBP</p>
                 </div>
             </div>
-            
+
             <div class="console-box" id="log-container" hidden>
-                <div class="console-header">🚀 Terminal de Progreso Asíncrono</div>
+                <div class="console-header">Progreso</div>
                 <pre id="log-console"></pre>
             </div>
-            
+
             <!-- Deprecado visualmente pero usable silenciosamente en caso de fallback -->
-            <output id="upload-status" aria-live="assertive" class="status-message" hidden></output>
+            <output id="upload-status" aria-live="assertive" hidden></output>
         </section>
 
-        <!-- Interfaz principal de edicion interactiva (Inicia oculta) -->
+        <!-- Espacio de edición visual (inicia oculto) -->
         <section id="editor-workspace" class="workspace-area" hidden>
-            <!-- TOP RIBBON BAR -->
-            <div class="top-toolbar glass-panel">
-                <!-- Group 1: Edit & Tools -->
-                <div class="toolbar-section">
-                    <span class="toolbar-label">Herramientas</span>
-                    <button id="btn-add-box" class="primary-btn" title="Inyectar Caja Manual">➕ Texto</button>
-                    <div class="tool-group" style="padding: 0.25rem 0.5rem; gap: 0.25rem;">
-                        <button id="btn-undo" class="icon-btn" title="Deshacer (Ctrl+Z)">↩️</button>
-                        <button id="btn-redo" class="icon-btn" title="Rehacer (Ctrl+Y)">↪️</button>
-                    </div>
-                </div>
-
-                <!-- Group 2: AI Magic -->
-                <div class="toolbar-section ai-section">
-                    <span class="toolbar-label">Inteligencia Artificial</span>
-                    <div class="tool-group ai-input-row" style="padding: 0.25rem 0.5rem; gap: 0.5rem;">
-                        <input type="password" id="ai-api-key" placeholder="Google AI Studio API Key (Opcional)" title="Introduce tu API Key de Google AI Studio" style="width: 18vw; max-width: 220px; font-size: 0.8rem;">
-                        <div class="ai-mode-stack">
-                            <select id="clean-mode" title="Modo de limpieza de fondo" style="font-size: 0.8rem; max-width: 140px;">
-                                <option value="auto">Auto</option>
-                                <option value="local">Local (OpenCV)</option>
-                                <option value="cloud">Cloud (AI Studio)</option>
-                            </select>
-                            <button id="btn-clean-bg" class="magic-btn" title="Limpia fondo con modo Auto/Local/Cloud">✨ Limpiar Fondo</button>
-                        </div>
-                        <button id="btn-save-key" title="Guardar Key Localmente" class="icon-btn" style="background: transparent; border: 1px solid rgba(255,255,255,0.2);">💾</button>
-                    </div>
-                    <div class="ai-meta-row">
-                        <div class="ai-helper-wrap">
-                            <small class="helper-inline">Obtén la clave en <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer">Google AI Studio</a></small>
-                            <small class="helper-inline" id="clean-mode-indicator">Modo activo: Auto</small>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Group 3: Export -->
-                <div class="toolbar-section" style="border-right: none; margin-left: auto;">
-                    <span class="toolbar-label">Salida</span>
-                    <select id="export-mode-select" title="Modo Exportación">
-                        <option value="only_modified">Modificados Editable</option>
-                        <option value="all_editable">Todo Editable</option>
-                    </select>
-                    <div class="export-targets" aria-label="Formatos de exportación">
-                        <label><input type="checkbox" id="export-pdf" checked> .pdf</label>
-                        <label><input type="checkbox" id="export-pptx" checked> .pptx</label>
-                        <label><input type="checkbox" id="export-md" checked> .md</label>
-                    </div>
-                    <button id="btn-export" class="primary-btn" style="background: linear-gradient(135deg, #10b981, #059669); padding: 0.75rem 1.5rem;">📥 Descargar Selección</button>
-                </div>
-            </div>
-
-            <p class="editor-tip">Tip: Doble clic en un bloque para editar el texto en sitio. Mantén <strong>Ctrl</strong> y haz click para selección múltiple, o arrastra sobre una zona vacía para seleccionar por rectángulo.</p>
-            
-            <!-- CONTENEDOR VISUAL PRINCIPAL -->
-            <div id="canvas-container" style="position: relative; background: transparent; border: none; padding: 0;">
-                
-                <!-- Controles Flotantes Superiores -->
-                <div class="canvas-overlays" style="padding-top: 1rem; padding-bottom: 0;">
-                    <!-- Paginación Top -->
-                    <div id="pagination-controls-top" class="pill-control glass-panel" hidden>
-                        <button id="btn-prev-top" title="Página Anterior">⬅️</button>
-                        <span id="page-indicator-top" style="font-size: 0.9rem; min-width: 70px; text-align: center;">Pág 1</span>
-                        <button id="btn-next-top" title="Página Siguiente">➡️</button>
-                    </div>
-                    
-                    <!-- Zoom Top -->
-                    <div id="canvas-zoom-controls-top" class="pill-control glass-panel">
-                        <button id="btn-zoom-out-top" title="Reducir">➖</button>
-                        <span id="zoom-indicator-top" style="font-size: 0.9rem; min-width: 45px; text-align: center;">100%</span>
-                        <button id="btn-zoom-in-top" title="Ampliar">➕</button>
-                        <button id="btn-zoom-reset-top" style="font-size: 0.8rem; margin-left: 5px;">Auto</button>
-                    </div>
-                </div>
-
-                <!-- Canvas Central -->
+            <div id="canvas-container">
                 <div id="canvas-wrapper">
                     <canvas id="pdf-canvas">El navegador no soporta HTML5 Canvas :(</canvas>
                 </div>
 
-                <!-- Controles Flotantes sobre Canvas (Pildoras) -->
                 <div class="canvas-overlays">
-                    <!-- Zoom -->
-                    <div id="canvas-zoom-controls" class="pill-control glass-panel">
-                        <button id="btn-zoom-out" title="Reducir">➖</button>
-                        <span id="zoom-indicator" style="font-size: 0.9rem; min-width: 45px; text-align: center;">100%</span>
-                        <button id="btn-zoom-in" title="Ampliar">➕</button>
-                        <button id="btn-zoom-reset" style="font-size: 0.8rem; margin-left: 5px;">Auto</button>
+                    <div id="canvas-zoom-controls" class="pill-control">
+                        <button id="btn-zoom-out" class="bar-btn" title="Reducir"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM8 11h6"></path></svg></button>
+                        <span id="zoom-indicator">100%</span>
+                        <button id="btn-zoom-in" class="bar-btn" title="Ampliar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM8 11h6M11 8v6"></path></svg></button>
+                        <button id="btn-zoom-reset" class="bar-btn" title="Ajustar a la ventana"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg></button>
                     </div>
 
-                    <!-- Paginación -->
-                    <div id="pagination-controls" class="pill-control glass-panel" hidden>
-                        <button id="btn-prev" title="Página Anterior">⬅️</button>
-                        <span id="page-indicator" style="font-size: 0.9rem; min-width: 70px; text-align: center;">Pág 1</span>
-                        <button id="btn-next" title="Página Siguiente">➡️</button>
+                    <div id="pagination-controls" class="pill-control" hidden>
+                        <button id="btn-prev" class="bar-btn" title="Página anterior"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 19l-7-7 7-7"></path></svg></button>
+                        <span id="page-indicator">Página 1</span>
+                        <button id="btn-next" class="bar-btn" title="Página siguiente"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg></button>
                     </div>
                 </div>
             </div>
         </section>
+
+        <!-- Opciones de IA externa: ocultas, conservadas para el modo cloud opcional -->
+        <div id="ai-external-options" hidden>
+            <input type="password" id="ai-api-key" placeholder="Google AI Studio API Key (Opcional)" title="Introduce tu API Key de Google AI Studio">
+            <select id="clean-mode" title="Modo de limpieza de fondo">
+                <option value="local" selected>Local (OpenCV)</option>
+                <option value="cloud">Cloud (AI Studio)</option>
+                <option value="auto">Auto</option>
+            </select>
+            <button id="btn-save-key" type="button" title="Guardar Key localmente">Guardar</button>
+            <small class="helper-inline" id="clean-mode-indicator">Modo activo: Local</small>
+        </div>
 
         <!-- Barra flotante de herramientas de diseño JS -->
         <div id="floating-toolbar" class="floating-toolbar glass-panel" hidden>
@@ -331,9 +325,41 @@
                 <span>Listo</span>
             </button>
         </div>
-
-
     </main>
+
+    <!-- ══ BARRA DE ESTADO ══════════════════════════════════════════════════ -->
+    <div id="app-status">
+        <span class="status-left">
+            <span id="engine-dot" class="status-dot"></span>
+            <span id="engine-status">Conectando con el motor OCR local&hellip;</span>
+        </span>
+        <span id="runtime-mode" class="status-right"></span>
+    </div>
+
+    <!-- ══ MODAL «ACERCA DE» ════════════════════════════════════════════════ -->
+    <div id="about-modal" class="modal-overlay" hidden>
+        <div id="about-backdrop" class="modal-backdrop"></div>
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="about-title">
+            <button id="about-close" class="bar-btn modal-close" title="Cerrar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
+            <div class="about-head">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H12l4 4v3M4 5.5V18a2 2 0 0 0 2 2h5M15 20l3-3 3 3M18 17v5"></path></svg>
+                <div>
+                    <h2 id="about-title">DBV PDF2Deck</h2>
+                    <p id="about-version">Versión &mdash;</p>
+                </div>
+            </div>
+            <p class="about-desc">Convierte PDFs de solo imagen en presentaciones editables.
+               OCR local, sin nube y sin suscripciones.</p>
+            <div class="about-links">
+                <a href="https://davidbuenov.com" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3.6 9h16.8M3.6 15h16.8M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"></path></svg>davidbuenov.com</a>
+                <a href="https://github.com/davidbuenov/dbv-pdf2deck" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 17l-5-5 5-5M16 7l5 5-5 5M14 4l-4 16"></path></svg>github.com/davidbuenov/dbv-pdf2deck</a>
+                <a href="https://www.youtube.com/@davidbuenov" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22.5 6.4a2.8 2.8 0 0 0-1.9-2C18.9 4 12 4 12 4s-6.9 0-8.6.4a2.8 2.8 0 0 0-2 2C1 8.1 1 12 1 12s0 3.9.5 5.6a2.8 2.8 0 0 0 1.9 2C5.1 20 12 20 12 20s6.9 0 8.6-.4a2.8 2.8 0 0 0 1.9-2c.5-1.7.5-5.6.5-5.6s0-3.9-.5-5.6zM9.8 15V9l5.7 3z"></path></svg>youtube.com/@davidbuenov</a>
+                <a href="https://www.linkedin.com/in/davidbueno/" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.9"></path></svg>linkedin.com/in/davidbueno</a>
+            </div>
+            <p class="about-author">David Bueno Vallejo &middot; Licencia MIT</p>
+        </div>
+    </div>
+
 
     <footer role="contentinfo">
         <div class="social-links">

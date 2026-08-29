@@ -24,6 +24,8 @@ venv/
 .env
 .venv
 env/
+.venv-sidecar/
+.venv-pdfium/
 
 # ----------------------------------------------------------------------------
 # Caché de Python
@@ -53,10 +55,14 @@ Terminando
 *.pdf
 *.pptx
 *.zip
+dist/
+build/
+src-tauri/binaries/*.exe
 
 # ----------------------------------------------------------------------------
 # IDEs y editores
 # ----------------------------------------------------------------------------
+node_modules/
 .vscode/settings.json
 .vscode/launch.json
 .vscode/tasks.json

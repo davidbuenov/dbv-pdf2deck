@@ -9,9 +9,11 @@ Gobernado por FastAPI y construido bajo reglas estrictas de código localizadas 
 """
 
 from contextlib import asynccontextmanager
+
+from api.endpoints import router as api_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.endpoints import router as api_router
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -60,5 +62,13 @@ def health_check() -> dict[str, str]:
     return status
 
 if __name__ == "__main__":
+    import argparse
+    import os
+
     import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=False)
+
+    parser = argparse.ArgumentParser(description="DBV PDF2Deck local API")
+    parser.add_argument("--port", type=int, default=None)
+    arguments = parser.parse_args()
+    backend_port = arguments.port or int(os.getenv("DBV_BACKEND_PORT", "8000"))
+    uvicorn.run(app, host="127.0.0.1", port=backend_port, reload=False)

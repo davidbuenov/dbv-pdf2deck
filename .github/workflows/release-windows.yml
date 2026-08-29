@@ -1,0 +1,74 @@
+name: Release Windows
+
+# Construye el instalador NSIS de Windows y lo adjunta como borrador de GitHub
+# Release en cada tag vX.Y.Z. Sin firma de código ni auto-actualización — ver
+# dbv-specs-ops/docs/NATIVE_APPS_RELEASE_CI.md §8 sobre por qué eso es un
+# punto de partida legítimo, y §6 sobre cómo evolucionar hacia firma/updater
+# más adelante sin romper este workflow.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: >
+          "true" (normal): crea/usa un borrador para esa versión. "false": la Release de esa
+          versión ya está PUBLICADA y solo quieres añadirle artefactos de esta plataforma.
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Leer versión de tauri.conf.json
+        id: version
+        run: echo "tag=v$(node -p "require('./src-tauri/tauri.conf.json').version")" >> "$env:GITHUB_OUTPUT"
+
+      - name: Determinar si la Release debe crearse/tratarse como borrador
+        id: draft
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            "value=${{ github.event.inputs.draft }}" >> $env:GITHUB_OUTPUT
+          } else {
+            "value=true" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Instalar Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Construir sidecar Python
+        shell: pwsh
+        run: |
+          python -m venv .venv-sidecar
+          .\.venv-sidecar\Scripts\python.exe -m pip install -r packaging\requirements-sidecar.txt
+          .\.venv-sidecar\Scripts\python.exe packaging\build_sidecar.py --target-triple x86_64-pc-windows-msvc
+
+      - name: Instalar dependencias de Node
+        run: npm install
+
+      - name: Build y Release (Windows)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ steps.version.outputs.tag }}
+          releaseName: ${{ steps.version.outputs.tag }}
+          releaseDraft: ${{ steps.draft.outputs.value }}
+          prerelease: false
+          includeUpdaterJson: false

@@ -5,22 +5,28 @@
 # =============================================================================
 """
 Motor de re-ensamblaje y exportación hacia ecosistema Office (PPTX) y estándar PDF.
-Dependencias principales: python-pptx, PyMuPDF
+Dependencias principales: python-pptx, reportlab, pypdf
 """
-import io
+from __future__ import annotations
+
 import base64
-import zipfile
+import io
+import logging
 import tempfile
+import zipfile
 from pathlib import Path
 from typing import Any, cast
 
-import fitz
-from .markdown_exporter import build_markdown_export
+from pypdf import PdfReader, PdfWriter
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfgen.canvas import Canvas
+
 try:
     from pptx import Presentation
-    from pptx.util import Pt, Emu
     from pptx.dml.color import RGBColor
-    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+    from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+    from pptx.util import Emu, Pt
     PPTX_AVAILABLE = True
 except ImportError:
     Presentation = None
@@ -30,6 +36,9 @@ except ImportError:
     PP_ALIGN = None
     MSO_ANCHOR = None
     PPTX_AVAILABLE = False
+
+
+logger = logging.getLogger(__name__)
 
 
 ALIGN_MAP_PDF = {"left": 0, "center": 1, "right": 2}
@@ -55,7 +64,7 @@ def _hex_to_rgb(hex_code: str) -> tuple[int, int, int]:
 def _to_pdf_font(font_name: str | None, is_bold: bool = False, is_italic: bool = False) -> str:
     """
     Mapea nombres de fuentes variadas hacia Base-14 de PDF con soporte para Bold e Italic.
-    Retorna nombres estándar de PDF que PyMuPDF reconoce.
+    Retorna nombres estándar de PDF Base-14.
     """
     if not font_name:
         base_name = "Helvetica"
@@ -112,7 +121,7 @@ def _page_scale_to_ppt_points(page_data: dict, width_px: float, height_px: float
     return page_w_pt / safe_w, page_h_pt / safe_h
 
 
-def _safe_line_spacing(raw_value: float | int | str | None) -> float:
+def _safe_line_spacing(raw_value: float | str | None) -> float:
     try:
         parsed = float(raw_value) if raw_value is not None else 1.15
     except (TypeError, ValueError):
@@ -120,342 +129,196 @@ def _safe_line_spacing(raw_value: float | int | str | None) -> float:
     return max(0.8, min(3.0, parsed))
 
 
-def _wrap_pdf_text_lines(text: str, fontname: str, fontsize: float, max_width: float) -> list[str]:
-    """Envuelve texto en líneas para replicar subrayado/line-height al exportar PDF."""
-    safe_text = str(text or "")
-    width_limit = max(1.0, float(max_width))
-
-    def text_width(sample: str) -> float:
-        try:
-            return float(fitz.get_text_length(sample, fontname=fontname, fontsize=fontsize))
-        except Exception:
-            return float(len(sample)) * fontsize * 0.5
-
+def _reportlab_text_lines(text: str, font_name: str, font_size: float, max_width: float) -> list[str]:
     lines: list[str] = []
-    for raw_line in safe_text.split("\n"):
-        words = raw_line.split(" ")
+    for raw_line in str(text or "").split("\n"):
         current = ""
-        for word in words:
+        for word in raw_line.split(" "):
             candidate = f"{current} {word}".strip() if current else word
-            if current and text_width(candidate) > width_limit:
+            if current and pdfmetrics.stringWidth(candidate, font_name, font_size) > max_width:
                 lines.append(current)
                 current = word
             else:
                 current = candidate
         lines.append(current)
-        if raw_line == "":
-            lines.append("")
-
-    if not lines:
-        lines.append("")
-    return lines
+    return lines or [""]
 
 
-def _draw_pdf_underlines(
-    page: fitz.Page,
-    rect: fitz.Rect,
+def _fit_reportlab_font_size(
     text: str,
-    fontsize: float,
-    fontname: str,
-    color: tuple[float, float, float],
-    align: int,
+    font_name: str,
+    requested_size: float,
+    width: float,
+    height: float,
     line_spacing: float,
-    overlay: bool = False,
-) -> None:
-    lines = _wrap_pdf_text_lines(text, fontname, fontsize, rect.width)
-    line_h = fontsize * line_spacing
-
-    def text_width(sample: str) -> float:
-        try:
-            return float(fitz.get_text_length(sample, fontname=fontname, fontsize=fontsize))
-        except Exception:
-            return float(len(sample)) * fontsize * 0.5
-
-    for idx, line in enumerate(lines):
-        if not line:
-            continue
-        text_w = min(rect.width, text_width(line))
-        if align == 1:  # center
-            x0 = rect.x0 + (rect.width - text_w) / 2.0
-        elif align == 2:  # right
-            x0 = rect.x1 - text_w
-        else:  # left
-            x0 = rect.x0
-
-        baseline_y = rect.y0 + ((idx + 1) * line_h)
-        underline_y = baseline_y + max(0.6, fontsize * 0.08)
-        page.draw_line(
-            fitz.Point(x0, underline_y),
-            fitz.Point(x0 + text_w, underline_y),
-            color=color,
-            width=max(0.6, fontsize * 0.05),
-            overlay=overlay,
-        )
+) -> tuple[float, list[str], list[str]]:
+    size = max(6.0, requested_size)
+    minimum_size = 6.0
+    while size > minimum_size:
+        lines = _reportlab_text_lines(text, font_name, size, width)
+        if len(lines) * size * line_spacing <= height:
+            return size, lines, []
+        size = max(minimum_size, size * 0.9)
+    lines = _reportlab_text_lines(text, font_name, size, width)
+    capacity = max(1, int(height // (size * line_spacing)))
+    return size, lines[:capacity], lines[capacity:]
 
 
-def _insert_pdf_text_with_style(
-    page: fitz.Page,
-    rect: fitz.Rect,
+def _draw_reportlab_textbox(
+    canvas: Canvas,
+    page_height: float,
+    rect: tuple[float, float, float, float],
     text: str,
-    fontsize: float,
-    fontname: str,
+    font_size: float,
+    font_name: str,
     color: tuple[float, float, float],
     align: int,
     line_spacing: float,
     underline: bool,
-    overlay: bool = False,
+    label: str,
 ) -> None:
-    insert_kwargs = {
-        "fontsize": fontsize,
-        "fontname": fontname,
-        "color": color,
-        "align": align,
-    }
-
-    try:
-        page.insert_textbox(rect, text, lineheight=line_spacing, overlay=overlay, **insert_kwargs)
-    except TypeError:
-        # Compatibilidad con versiones de PyMuPDF sin argumento lineheight.
-        if overlay:
-            page.insert_textbox(rect, text, overlay=True, **insert_kwargs)
+    x0, y0, x1, y1 = rect
+    width = max(1.0, x1 - x0)
+    height = max(1.0, y1 - y0)
+    actual_size, lines, overflow = _fit_reportlab_font_size(
+        text, font_name, font_size, width, height, line_spacing
+    )
+    if overflow:
+        logger.warning("Texto truncado en %s: %d líneas sobrantes", label, len(overflow))
+    line_height = actual_size * line_spacing
+    canvas.setFont(font_name, actual_size)
+    canvas.setFillColorRGB(*color)
+    canvas.setStrokeColorRGB(*color)
+    for index, line in enumerate(lines):
+        text_width = pdfmetrics.stringWidth(line, font_name, actual_size)
+        if align == 1:
+            x = x0 + (width - text_width) / 2.0
+        elif align == 2:
+            x = x1 - text_width
         else:
-            page.insert_textbox(rect, text, **insert_kwargs)
+            x = x0
+        baseline = page_height - y0 - ((index + 1) * line_height)
+        canvas.drawString(x, baseline, line)
+        if underline and line:
+            underline_y = baseline - max(0.6, actual_size * 0.08)
+            canvas.setLineWidth(max(0.6, actual_size * 0.05))
+            canvas.line(x, underline_y, x + text_width, underline_y)
 
-    if underline and text:
-        _draw_pdf_underlines(page, rect, text, fontsize, fontname, color, align, line_spacing, overlay=overlay)
+
+def _draw_reportlab_blocks(canvas: Canvas, page_data: dict, page_width: float, page_height: float) -> None:
+    scale_x, scale_y = _page_scale_to_pdf_points(page_data)
+    export_mode = page_data.get("_export_mode", "only_modified")
+    for block_index, block in enumerate(page_data.get("blocks", [])):
+        if export_mode == "only_modified" and not bool(block.get("is_modified", False)):
+            continue
+        x0, y0, x1, y1 = (float(value) for value in block.get("bbox", [0, 0, 0, 0]))
+        rect = (x0 * scale_x, y0 * scale_y, x1 * scale_x, y1 * scale_y)
+        if not block.get("bg_transparent", False):
+            red, green, blue = _hex_to_rgb(str(block.get("bg_color", "#ffffff")))
+            canvas.setFillColorRGB(red / 255.0, green / 255.0, blue / 255.0)
+            canvas.rect(rect[0], page_height - rect[3], rect[2] - rect[0], rect[3] - rect[1], stroke=0, fill=1)
+        red, green, blue = _hex_to_rgb(str(block.get("text_color", "#000000")))
+        font_name = _to_pdf_font(block.get("font_family"), bool(block.get("is_bold")), bool(block.get("is_italic")))
+        _draw_reportlab_textbox(
+            canvas,
+            page_height,
+            rect,
+            str(block.get("text", "")),
+            max(6.0, float(block.get("font_size") or 16.0) * scale_y),
+            font_name,
+            (red / 255.0, green / 255.0, blue / 255.0),
+            ALIGN_MAP_PDF.get(str(block.get("text_align", "left")), 0),
+            _safe_line_spacing(block.get("line_spacing", 1.15)),
+            bool(block.get("is_underline", False)),
+            f"página {page_data.get('page_num', 0) + 1}, bloque {block_index + 1}",
+        )
 
 
-def _apply_hidden_pdf_signature(pdf_doc: fitz.Document) -> None:
-    """Inyecta firma oculta en metadatos del PDF sin alterar el contenido visual."""
-    metadata = pdf_doc.metadata or {}
-    metadata["creator"] = "Generador por davidbuenov.com"
-    metadata["producer"] = "DBVPDFEditor"
-    metadata["subject"] = "Documento generado con DBVPDFEditor"
-    metadata["keywords"] = "DBVPDFEditor, davidbuenov.com"
-    pdf_doc.set_metadata(metadata)
+def _reportlab_signature(writer: PdfWriter) -> None:
+    writer.add_metadata({
+        "/Creator": "Generador por davidbuenov.com",
+        "/Producer": "DBVPDFEditor",
+        "/Subject": "Documento generado con DBVPDFEditor",
+        "/Keywords": "DBVPDFEditor, davidbuenov.com",
+    })
+
+
+def _reportlab_image_overlay(page_data: dict, page_width: float, page_height: float, include_image: bool) -> bytes:
+    buffer = io.BytesIO()
+    canvas = Canvas(buffer, pagesize=(page_width, page_height))
+    if include_image and page_data.get("image_base64"):
+        canvas.drawImage(
+            ImageReader(io.BytesIO(_decode_image(str(page_data["image_base64"])))),
+            0,
+            0,
+            width=page_width,
+            height=page_height,
+            preserveAspectRatio=True,
+            anchor="sw",
+        )
+    _draw_reportlab_blocks(canvas, page_data, page_width, page_height)
+    canvas.save()
+    return buffer.getvalue()
+
+
+def _build_pdf_export_reportlab(payload: dict) -> bytes:
+    writer = PdfWriter()
+    for page_data in payload.get("pages", []):
+        image_bytes = _decode_image(str(page_data.get("image_base64", "")))
+        from PIL import Image
+        image = Image.open(io.BytesIO(image_bytes))
+        page_width = float(page_data.get("page_width_pt") or image.width)
+        page_height = float(page_data.get("page_height_pt") or image.height)
+        page_data = {**page_data, "_export_mode": payload.get("export_mode", "only_modified")}
+        overlay = PdfReader(io.BytesIO(_reportlab_image_overlay(page_data, page_width, page_height, True)))
+        writer.add_page(overlay.pages[0])
+    _reportlab_signature(writer)
+    output = io.BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
+def _build_pdf_export_from_original_reportlab(payload: dict, source_pdf_path: Path) -> bytes:
+    reader = PdfReader(str(source_pdf_path))
+    writer = PdfWriter()
+    pages_by_number = {
+        int(page.get("page_num", 0)): {**page, "_export_mode": payload.get("export_mode", "only_modified")}
+        for page in payload.get("pages", [])
+    }
+    for page_number, source_page in enumerate(reader.pages):
+        page_data = pages_by_number.get(page_number)
+        if page_data is not None and page_data.get("blocks"):
+            page_width = float(source_page.mediabox.width)
+            page_height = float(source_page.mediabox.height)
+            overlay_bytes = _reportlab_image_overlay(
+                page_data,
+                page_width,
+                page_height,
+                bool(page_data.get("ai_cleaned_bg")),
+            )
+            source_page.merge_page(PdfReader(io.BytesIO(overlay_bytes)).pages[0])
+        writer.add_page(source_page)
+    _reportlab_signature(writer)
+    output = io.BytesIO()
+    writer.write(output)
+    return output.getvalue()
 
 
 def build_pdf_export(payload: dict) -> bytes:
     """
     Restaura la estructura original repintando las alteraciones visuales sobre el lienzo virtual
-    cerrándolo nativamente en formato .PDF
+    cerrándolo nativamente en formato .PDF mediante ReportLab.
     """
-    pdf_out = fitz.open()
-
-    for page_data in payload.get("pages", []):
-        b64_img = page_data.get("image_base64")
-        if not b64_img:
-            continue
-            
-        img_bytes = _decode_image(b64_img)
-        
-        # Mapeamos dimensiones naturales desde los pixeles netos
-        from PIL import Image
-        img_pil = Image.open(io.BytesIO(img_bytes))
-        width_px = float(img_pil.width)
-        height_px = float(img_pil.height)
-        
-        # Usar dimensiones reales en puntos PDF (no píxeles) para mantener el tamaño de página correcto
-        page_w_pt = float(page_data.get("page_width_pt") or width_px)
-        page_h_pt = float(page_data.get("page_height_pt") or height_px)
-        scale_x, scale_y = _page_scale_to_pdf_points(page_data)
-        
-        new_page = pdf_out.new_page(width=page_w_pt, height=page_h_pt)
-        new_page.insert_image(fitz.Rect(0, 0, page_w_pt, page_h_pt), stream=img_bytes)
-        
-        # Superposición de todos los bloques detectados como cajas editables
-        for block in page_data.get("blocks", []):
-            x0, y0, x1, y1 = block["bbox"]
-            # Convertir coordenadas del canvas (px) a puntos PDF
-            box_rect = fitz.Rect(
-                float(x0) * scale_x, float(y0) * scale_y,
-                float(x1) * scale_x, float(y1) * scale_y
-            )
-            
-            # Extraemos Variables Inyectadas por Usuario desde GUI
-            bg_hex = block.get("bg_color", "#ffffff")
-            txt_hex = block.get("text_color", "#000000")
-            fsize = block.get("font_size", 16)
-            font_fam = block.get("font_family", "system-ui")
-            
-            # Extraer flags de estilo
-            is_bold = bool(block.get("is_bold", False))
-            is_italic = bool(block.get("is_italic", False))
-            pdf_font = _to_pdf_font(font_fam, is_bold=is_bold, is_italic=is_italic)
-            
-            br, bg, bb = _hex_to_rgb(bg_hex)
-            tr, tg, tb = _hex_to_rgb(txt_hex)
-            
-            # Inserción Inmutable de Fuente nativa
-            t_color_norm = (tr/255.0, tg/255.0, tb/255.0)
-            b_color_norm = (br/255.0, bg/255.0, bb/255.0)
-            
-            is_modified = bool(block.get("is_modified", False))
-            export_mode = payload.get("export_mode", "only_modified")
-            
-            if export_mode == "only_modified" and not is_modified:
-                continue
-
-                
-            # Expandir generosamente la altura para evitar clipping vertical (PyMuPDF cancela el renderizado si la caja es corta en y)
-            extra_h = 200.0
-            expanded_rect = fitz.Rect(box_rect.x0, box_rect.y0, box_rect.x1, box_rect.y1 + extra_h)
-            
-            # Solo pintar el fondo si no es transparente.
-            # Pintamos sobre el rect original (no expandido) para no manchar visualmente el fondo excesivamente
-            if not block.get("bg_transparent", False):
-                new_page.draw_rect(box_rect, color=b_color_norm, fill=b_color_norm)
-
-            texto = block.get("text", "")
-            align_str = block.get("text_align", "left")
-            pdf_align = ALIGN_MAP_PDF.get(align_str, 0)
-            line_spacing = _safe_line_spacing(block.get("line_spacing", 1.15))
-            is_underline = bool(block.get("is_underline", False))
-            # Convertir font_size de píxeles canvas a puntos PDF
-            current_font_size = max(6.0, float(fsize) * scale_y)
-            
-            # Los bloques transparentes siempre requieren overlay=True para que el texto sea visible
-            # encima de la imagen rasterizada (caso NanoBanana: limpieza sobre fondo claro).
-            use_overlay = block.get("bg_transparent", False)
-
-            _insert_pdf_text_with_style(
-                new_page,
-                expanded_rect,
-                texto,
-                current_font_size,
-                pdf_font,
-                t_color_norm,
-                pdf_align,
-                line_spacing,
-                is_underline,
-                overlay=use_overlay,
-            )
-
-    _apply_hidden_pdf_signature(pdf_out)
-
-    buffer = io.BytesIO()
-    pdf_out.save(buffer)
-    pdf_out.close()
-    return buffer.getvalue()
+    return _build_pdf_export_reportlab(payload)
 
 
 def build_pdf_export_from_original(payload: dict, source_pdf_path: Path) -> bytes:
     """
     Estrategia unificada para exportar PDF con ediciones preservando calidad máxima
-    en páginas no tocadas:
-
-    - Páginas SIN ediciones  → se copian del PDF original sin ningún cambio.
-    - Páginas CON ediciones  → se inserta la imagen rasterizada del canvas como capa
-      base (overlay) y se superponen los bloques modificados como vectores (rect +
-      textbox). Esta estrategia es idéntica a la del exportador PPTX, que ya funciona
-      correctamente, y evita todos los problemas de Z-order de content-streams en PDFs
-      existentes (draw_rect, redact_annot, etc.).
+    en páginas no tocadas mediante overlay con ReportLab y pypdf.
     """
-    pdf_out = fitz.open(str(source_pdf_path))
+    return _build_pdf_export_from_original_reportlab(payload, source_pdf_path)
 
-    for page_data in payload.get("pages", []):
-        page_num = int(page_data.get("page_num", 0))
-        if page_num < 0 or page_num >= len(pdf_out):
-            continue
-
-        # Recopilar TODOS los bloques para exportar como editables
-        all_blocks = page_data.get("blocks", [])
-
-        # Caso 1: Sin bloques detectados → preservar página original intacta
-        if not all_blocks:
-            continue
-
-        page = pdf_out[page_num]
-        scale_x, scale_y = _page_scale_to_pdf_points(page_data)
-
-        # Normalizamos la estructura interna de la página (estado gráfico / Z-order)
-        # Esto es vital en PDFs originarios (NotebookLM) para evitar que elementos dibujados 
-        # en background eclipsen la inyección del `draw_rect` con overlay.
-        page.clean_contents()
-
-        # Preservamos íntegro el PDF nativo (sin insertar la imagen canvas encima).
-        # Esto permite que los vectores y textos originales sigan siendo puros en el PDF exportado.
-
-        if page_data.get("ai_cleaned_bg"):
-            # Si el usuario utilizó IA para limpiar meticulosamente el fondo, esa es la "funte de la verdad".
-            # Es necesario tapar todos los vectores originales subyacentes con esta imagen de fondo.
-            b64_img = page_data.get("image_base64")
-            if b64_img:
-                img_bytes = _decode_image(b64_img)
-                # Capa de seguridad: rectángulo blanco opaco para anular cualquier vector rebelde
-                page.draw_rect(page.rect, color=(1,1,1), fill=(1,1,1), overlay=True)
-                # overlay=True tapa todo lo original de esa capa pero debajo de nuestro nuevo texto
-                page.insert_image(page.rect, stream=img_bytes, overlay=True)
-
-        # Paso 3: superponer SOLAMENTE los bloques modificados como vector puro.
-        for block in all_blocks:
-            is_modified = bool(block.get("is_modified", False))
-            export_mode = payload.get("export_mode", "only_modified")
-            
-            if export_mode == "only_modified" and not is_modified:
-                continue
-                
-            font_size_px = float(block.get("font_size") or 16.0)
-            # Mapeo directo de píxeles de renderizado (del canvas) a puntos PDF
-            font_size_pt = max(6.0, font_size_px * scale_y)
-            is_bold   = bool(block.get("is_bold", False))
-            is_italic = bool(block.get("is_italic", False))
-            font_name = _to_pdf_font(block.get("font_family"), is_bold=is_bold, is_italic=is_italic)
-
-            bg_hex = block.get("bg_color", "#ffffff")
-            br, bg_r, bb = _hex_to_rgb(bg_hex)
-            fill_color = (br / 255.0, bg_r / 255.0, bb / 255.0)
-
-            text_hex = block.get("text_color", "#000000")
-            tr, tg, tb = _hex_to_rgb(text_hex)
-            text_color = (tr / 255.0, tg / 255.0, tb / 255.0)
-
-            # Rect de coordenadas PDF
-            ix0 = float(block["bbox"][0]) * scale_x
-            iy0 = float(block["bbox"][1]) * scale_y
-            ix1 = float(block["bbox"][2]) * scale_x
-            iy1 = float(block["bbox"][3]) * scale_y
-            
-            # Expandir solo un 5% de la altura para evitar clipping sin afectar layout
-            extra_height = (iy1 - iy0) * 0.05
-            insert_rect = fitz.Rect(ix0, iy0, ix1, iy1 + extra_height)
-
-            # Rect de COBERTURA en coordenadas PDF (tapa el texto antiguo de la imagen subyacente o PDF)
-            if not block.get("bg_transparent", False):
-                cover_rect = fitz.Rect(ix0, iy0, ix1, iy1)
-                page.draw_rect(cover_rect, color=fill_color, fill=fill_color, overlay=True)
-            
-            # Expandir generosamente la altura del rectángulo de texto para que textos en múltiples líneas no desaparezcan
-            extra_h = 200.0
-            final_rect = fitz.Rect(ix0, iy0, ix1, iy1 + extra_h)
-
-            current_font_size = font_size_pt
-            texto = block.get("text", "")
-            align_str = block.get("text_align", "left")
-            pdf_align = ALIGN_MAP_PDF.get(align_str, 0)
-            line_spacing = _safe_line_spacing(block.get("line_spacing", 1.15))
-            is_underline = bool(block.get("is_underline", False))
-            
-            # Dibujado definitivo en la página real con el tamaño ideal calculado del usuario
-            _insert_pdf_text_with_style(
-                page,
-                final_rect,
-                texto,
-                current_font_size,
-                font_name,
-                text_color,
-                pdf_align,
-                line_spacing,
-                is_underline,
-                overlay=True,
-            )
-
-    _apply_hidden_pdf_signature(pdf_out)
-
-    buffer = io.BytesIO()
-    pdf_out.save(buffer)
-    pdf_out.close()
-    return buffer.getvalue()
 
 
 def build_pptx_export(payload: dict) -> bytes:
@@ -618,6 +481,7 @@ def generate_export_zip(payload_dict: dict, source_pdf_path: Path | None = None)
             zipf.writestr("Presentacion_Editada_Impresa.pdf", pdf_bytes)
 
         if export_md:
+            from .markdown_exporter import build_markdown_export
             zipf.writestr("Presentacion_Editada_DBV.md", build_markdown_export(payload_dict, source_pdf_path))
 
         if export_pptx and PPTX_AVAILABLE:

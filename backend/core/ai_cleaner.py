@@ -2,8 +2,6 @@ import base64
 import io
 
 from PIL import Image
-from google import genai
-from google.genai import types
 
 
 def _normalize_b64_image(b64_image: str) -> str:
@@ -50,10 +48,10 @@ def clean_image_with_inpaint(b64_image: str, boxes: list[dict]) -> str:
         else:
             continue
 
-        x0i = max(0, min(width - 1, int(round(float(x0)))))
-        y0i = max(0, min(height - 1, int(round(float(y0)))))
-        x1i = max(0, min(width - 1, int(round(float(x1)))))
-        y1i = max(0, min(height - 1, int(round(float(y1)))))
+        x0i = max(0, min(width - 1, round(float(x0))))
+        y0i = max(0, min(height - 1, round(float(y0))))
+        x1i = max(0, min(width - 1, round(float(x1))))
+        y1i = max(0, min(height - 1, round(float(y1))))
 
         if x1i <= x0i or y1i <= y0i:
             continue
@@ -77,6 +75,12 @@ def clean_image_with_ai(b64_image: str, api_key: str) -> str:
     Envía la imagen a Nano Banana 2 (gemini-3.1-flash-image-preview) para inpainting.
     Se espera que el LLM devuelva la imagen sin texto.
     """
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError as exc:
+        raise RuntimeError("El paquete google-genai no está instalado en el backend.") from exc
+
     client = genai.Client(api_key=api_key)
     
     # Decodificar el base64 a bytes

@@ -6,27 +6,26 @@
 """
 Definición de rutas principales de la API para orquestar procesado PDF y OCR.
 """
-from pathlib import Path
+import asyncio
+import base64
+import io
+import shutil
 import tempfile
 import uuid
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
-import asyncio
-from datetime import datetime
 
-from fastapi import APIRouter, File, UploadFile, HTTPException, Form
-from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
-from fastapi.background import BackgroundTasks
-from pydantic import BaseModel
-
-from core.pdf_renderer import process_document_file, PDFDocumentContext
-import io
-import base64
-import shutil
-from core.ocr_engine import analyze_image, OCRBlock
-from core.exporter_engine import generate_export_zip
 from core.ai_cleaner import clean_image_with_ai, clean_image_with_inpaint
-from core.result import Ok, Err
-from core.settings import MAX_UPLOAD_MB, MAX_UPLOAD_BYTES
+from core.exporter_engine import generate_export_zip
+from core.ocr_engine import analyze_image
+from core.pdf_renderer import process_document_file
+from core.result import Err, Ok
+from core.settings import MAX_UPLOAD_BYTES, MAX_UPLOAD_MB
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.background import BackgroundTasks
+from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
 
 # Enrutador asilado para versionar la API elegantemente
 router = APIRouter(prefix="/api/v1", tags=["document-processor"])
@@ -40,7 +39,7 @@ DOCUMENT_STORE: dict[str, Path] = {}
 
 def _log_processing_step(doc_id: str, message: str) -> None:
     """Emite trazas legibles del progreso y las acumula en cola SSE para el cliente."""
-    timestamp = datetime.now().strftime("%H:%M:%S")
+    timestamp = datetime.now(timezone.utc).astimezone().strftime("%H:%M:%S")
     log_msg = f"[{timestamp}] {message}"
     print(f"[PROCESS][{doc_id}] {message}", flush=True)
     
@@ -108,8 +107,7 @@ async def stream_process_logs(doc_id: str):
                     break
         finally:
             # Limpiar la cola cuando el cliente se desconecte
-            if doc_id in LOG_QUEUES:
-                del LOG_QUEUES[doc_id]
+            LOG_QUEUES.pop(doc_id, None)
     
     return StreamingResponse(
         event_generator(),
@@ -195,7 +193,7 @@ def process_document(file: UploadFile = File(...), doc_id: str | None = Form(Non
                 pages_out: list[PageResponse] = []
                 _log_processing_step(doc_id, f"Render base completado. Total de páginas detectadas: {context.total_pages}.")
                 
-                # Iterativa de acoplo PyMuPDF img -> Paddle OCR logic
+                # Iterativa de acoplo de imagen renderizada con la lógica OCR.
                 for render in context.pages:
                     human_page_num = render.page_num + 1
                     _log_processing_step(
