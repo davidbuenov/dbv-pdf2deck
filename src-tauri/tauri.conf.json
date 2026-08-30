@@ -4,7 +4,9 @@
   "version": "2.0.0",
   "identifier": "com.davidbuenov.dbv-pdf2deck",
   "build": {
-    "frontendDist": "../frontend"
+    "frontendDist": "../frontend",
+    "beforeDevCommand": "npm run check:tauri-globals",
+    "beforeBuildCommand": "npm run check:tauri-globals"
   },
   "app": {
     "withGlobalTauri": true,
@@ -46,7 +48,7 @@
       "endpoints": [
         "https://github.com/davidbuenov/dbv-pdf2deck/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYyMEE1MjczRThCQkNDRDQKUldUVXpMdm9jMUlLWXBhRFp4cHNoLys3ME42NEZMVld3WHcrd0lyUzRZN09WVmEwWXFnNVYrcEMK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlBRTI5RDYyNzUxQzkzRDQKUldUVWt4eDFZcDNpbXExZjU5MlRVRXRDNTRBV2h3TmhGd2JYUzZMTVdpdEo5WHhxT0pMQkJwcFgK"
     }
   }
 }

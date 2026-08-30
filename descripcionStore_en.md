@@ -5,8 +5,15 @@
 > **⚠️ Do not submit yet — open blockers (see `dbv-specs-ops/task.md` → "Pendiente para las tiendas"):**
 > 1. No MSIX package exists for this project yet. `Identity.Name`/`Publisher` still need to be reserved in Partner Center, and the package still needs to be built (candidate tool: `@choochmeque/tauri-windows-bundle`, already validated on `dbv-md-reader`).
 > 2. The sidecar with `torch`+CUDA weighs 2–5 GB. The already-decided strategy — a small base installer plus a first-run wizard that provisions the OCR runtime — **has not been built yet**, and it is a certification prerequisite (policy 10.2.4: the listing must disclose that the app downloads the runtime after install).
-> 3. No screenshots exist yet (`docs/assets/store/` isn't present in this repo, unlike `dbv-md-reader`).
-> 4. `gh release list` returns nothing: there is no artifact to submit today.
+> 3. `gh release list` returns nothing: there is no artifact to submit today.
+>
+> **✅ Screenshots & promotional assets ready in `docs/assets/store/`:**
+> - Hero Featured Banner (16:9): `hero_featured_banner_en.jpg`
+> - Screenshot 1 (Welcome / Dropzone): `01_hero_welcome_en.png`
+> - Screenshot 2 (Visual Canvas WYSIWYG Editor): `02_canvas_editor_wysiwyg_en.png`
+> - Screenshot 3 (Magic Eraser & Inpainting): `03_magic_eraser_inpainting_en.png`
+> - Screenshot 4 (Clean Preview Mode): `04_preview_mode_clean_en.png`
+> - Screenshot 5 (PPTX Export Menu): `05_export_modal_powerpoint_en.png`
 >
 > This file is the content draft, ready to paste in once packaging exists — not a confirmation that submission is ready.
 

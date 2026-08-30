@@ -116,7 +116,7 @@ html.is-desktop footer { display: none; }
     top: 0;
     z-index: 60;
     flex-wrap: nowrap;
-    overflow-x: auto;
+    overflow: visible;
     scrollbar-width: none;
 }
 
@@ -476,6 +476,7 @@ html.is-desktop footer { display: none; }
 }
 
 .about-head { display: flex; align-items: center; gap: 11px; color: var(--color-primary-focus); }
+.about-head-logo { width: 42px; height: 42px; border-radius: 10px; flex-shrink: 0; object-fit: contain; }
 .about-head h2 { font-size: 17px; font-weight: 800; letter-spacing: -0.2px; color: var(--color-text); }
 #about-version { font-size: 12px; color: var(--color-text-muted); margin-top: 1px; }
 .about-desc { margin-top: 18px; font-size: 13px; line-height: 1.6; color: #cbd5e1; }

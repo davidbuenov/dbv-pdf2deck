@@ -50,14 +50,15 @@
     2. *Posicionamiento de Edición con Scroll*: Corregido `_blockCssRect` en `frontend/canvas_engine.js` sumando `wrapper.scrollTop` y `wrapper.scrollLeft`, eliminando el desfase donde el editor `#inline-block-editor` saltaba a la parte superior de la ventana al editar bloques con scroll vertical activo.
     3. *UI Canvas*: Eliminada la franja superior oscura invasiva `_drawDetectionLabel` al seleccionar bloques en `frontend/canvas_engine.js`.
   - **Flujo Nuevo / Abrir Documento (2026-08-29)**: Botón «Nuevo» (`#btn-new-file` / `Ctrl+N`) para volver al panel de carga/drag & drop y botón «Abrir» (`#btn-open-file` / `Ctrl+O`) para abrir el selector de archivos del sistema directamente.
-* **Próximo paso — retomar en la siguiente conversación**:
-  - [ ] **Optimización de Textos de Tienda (`descripcionStore_es.md` y `descripcionStore_en.md`)**: Redactar y pulir descripciones comerciales completas para Microsoft Store y Uptodown (títulos, subtítulos de 1 línea, características clave, privacidad offline zero-trust, aceleración GPU y formatos de exportación).
-  - [ ] **Diseño de Imagen Destacada Promocional (Hero / Featured Image)**: Generar imagen de portada de alto impacto visual (estilo `EER_Studio`) que sintetice la propuesta de valor: *"Convierte PDFs e infografías en presentaciones editables sin subir datos a la nube"*.
-  - [ ] **Capturas de Pantalla Promocionales (Store Screenshots)**: Tomar y maquetar capturas oficiales de la aplicación:
-    1. Pantalla de bienvenida con dropzone y barra limpia.
-    2. Editor visual Canvas con detección inteligente y edición inline WYSIWYG.
-    3. Goma Mágica e Inpainting local de fondos.
-    4. Modo Vista Previa limpio y menú de exportación con salvaguardas.
+  - **Capturas Oficiales y Material Gráfico de Tienda Completados (2026-08-30)**:
+    - Generadas portadas Hero Banner promocionales de alta resolución en `docs/assets/store/` (`hero_featured_banner_es.jpg` y `hero_featured_banner_en.jpg`) integrando título `DBV PDF2Deck`, subtítulo de propuesta de valor y badge *«100% Local OCR · Zero-Cloud Privacy»*.
+    - Automatizada la captura directa de la **aplicación de escritorio nativa (Tauri v2 / WebView2)** a 1920×1080 (Full HD Pixel-Perfect) tanto en español como en inglés:
+      1. `01_hero_welcome_*.png`: Bienvenida, dropzone y barra de estado con detección Turbo GPU (CUDA).
+      2. `02_canvas_editor_wysiwyg_*.png`: Editor visual en canvas con bloques OCR inteligentes y editor inline activo.
+      3. `03_magic_eraser_inpainting_*.png`: Herramienta interactiva Goma Mágica e Inpainting local de OpenCV.
+      4. `04_preview_mode_clean_*.png`: Modo Vista Previa limpio (WYSIWYG puro sin rectángulos de selección).
+      5. `05_export_modal_powerpoint_*.png`: Menú de exportación desplegado con opciones PPTX (150–600 DPI), PDF vectorial y Markdown.
+    - Sincronizadas las fichas `descripcionStore_es.md`, `descripcionStore_en.md`, `descripcionStoreUptoDown_es.md`, `descripcionStoreUptoDown_en.md` y `README.md` a la versión **2.0.0** con la galería de assets completa.
 
 ---
 
@@ -130,7 +131,27 @@ Procedimiento: `MIGRATION_PROMPT.md` de `dbv-tauri-starter`. Contexto y decision
   - [ ] 2 · **Iconografía de marca** desde un `app-icon.svg` único con `npx tauri icon`. Sin verificar.
   - [ ] 3 · **Atajos universales** (`Ctrl+S`, `Ctrl+O`, `Escape`) con el foco dentro de un input. Solo
         hay `Ctrl+Z` / `Ctrl+Y`; `Escape` cierra el modal «Acerca de» y el menú de exportación.
-  - [ ] 4 · **Menú de aplicación nativo en macOS**. No abordado.
+  - [x] 4 · **Menú de aplicación nativo en macOS**. Implementado (2026-08-30) portando literalmente el
+        patrón ya probado por un usuario real de macOS en `dbv-md-reader` (`src-tauri/src/lib.rs`,
+        `mod macos_menu`), no inventado desde cero: `sys-locale = "0.3"` añadido a `Cargo.toml`, módulo
+        `#[cfg(target_os = "macos")] mod macos_menu` en `src-tauri/src/lib.rs` con submenús
+        App/File/Edit/View/Window/Help, registrado en `.setup()` vía `app.handle().set_menu(menu)?`.
+        File/View adaptados a acciones reales de PDF2Deck (Nuevo/Abrir/Exportar/Deshacer/Rehacer/Alternar
+        vista previa), reenviadas al frontend con `.on_menu_event()` → `window.emit("menu-xxx", ())`,
+        escuchadas con `window.__TAURI__.event.listen(...)` en `main.js`, `desktop_shell.js` y
+        `canvas_engine.js` (cada listener junto a la función real que ya existía). Compilación verificada
+        para Windows (`cargo check`) y las firmas de `tauri::menu` verificadas contra el código fuente del
+        crate `tauri-2.11.5`; **pendiente compilar y probar en una Mac real** — aquí no hay toolchain de C
+        para completar el build cruzado (`objc2-exception-helper` falla al enlazar sin `cc`).
+        `.on_menu_event()` revisado con `/simplify`: usa `app.emit(...)` (no una ventana "main" por
+        etiqueta) y deriva `"menu-" + id` en vez de una tabla de 6 pares codificados a mano.
+  - [x] **Puerta de build contra colisión de globales de Tauri (2026-08-30)**: portada de
+        `dbv-teleprompter` (incidente real: `const isTauri` mató la interfaz de escritorio publicada en
+        v0.2.0, en las tres plataformas). `scripts/check-tauri-globals.mjs` instancia cada `.js` de
+        `frontend/` en un contexto `node:vm` con los globales que Tauri inyecta y aborta con
+        `SyntaxError` si hay colisión; enganchada como `npm run check:tauri-globals` en
+        `build.beforeDevCommand`/`beforeBuildCommand` de `tauri.conf.json`. Probada: detecta la
+        colisión inyectada a propósito y el frontend actual pasa limpio.
   - [x] 5 · **Scrollbars tematizadas y layout fluido**. Hecho en el rediseño: fuera el `max-width: 1400px`
         heredado de la web, el lienzo ocupa la ventana entera y las scrollbars van con la paleta.
   - [ ] 6 · **Tooltips con los atajos**. Solo deshacer y rehacer los anuncian.
@@ -254,20 +275,31 @@ Configurado el 2026-08-29. Canal self-hosted por GitHub Releases con
 - [ ] Dar de alta los dos secretos de firma y **lanzar un tag de prueba** para
       verificar el ciclo completo: build → `latest.json` → botón «Buscar
       actualizaciones» encontrando la versión nueva.
-- [ ] **Empaquetado MSIX** para Microsoft Store — decidido usar esta vía (ver snapshot debajo). La
-      tienda firma el paquete tras certificación, sin comprar certificado. `Identity.Name` y
-      `Publisher` tienen que coincidir **exactamente** con lo reservado en el Partner Center (§7 de
-      `MARKETPLACE_PUBLISHING.md`). Herramienta candidata: `@choochmeque/tauri-windows-bundle`, ya
-      validada en `dbv-md-reader` (`package.json` → script `tauri:windows:build`).
+- [x] **Empaquetado MSIX** para Microsoft Store, wireado (2026-08-30) con `@choochmeque/tauri-windows-bundle`
+      (validado antes en `dbv-md-reader`, no inventado): `src-tauri/gen/windows/bundle.config.json` con
+      `identifier: "davidbuenov.DBVPDF2Deck"`, `publisher: "CN=13EE2A5D-F49E-48C9-8873-941069B15D63"`,
+      `publisherDisplayName: "davidbuenov"` — coinciden exactamente con lo reservado en Partner Center
+      (screenshot del usuario, PFN esperado `davidbuenov.DBVPDF2Deck_ze9zfmg3hs4tt`). `displayName` se
+      fija a `"dbv-pdf2deck"` (no `"DBV PDF2Deck"`) porque `tauri-windows-bundle` deriva el nombre del
+      `.exe` a empaquetar quitando solo espacios de `displayName` — con espacio buscaría
+      `DBVPDF2Deck.exe` y el binario real de Cargo es `dbv-pdf2deck.exe`; mismo truco que ya usa
+      `dbv-md-reader`. Build local verificado con `npm run tauri:windows:build -- --runner npm` (el
+      runner por defecto `cargo tauri` falla: no hay subcomando `cargo-tauri` instalado, solo el CLI de
+      npm `@tauri-apps/cli`): genera `dbv-pdf2deck_2.0.0.0.msixbundle` en `src-tauri/target/msix/`, con
+      `Identity Name`/`Publisher` confirmados byte a byte contra el manifiesto generado. Sin workflow de
+      CI para esto — igual que en `dbv-md-reader`, es un build local que se sube a mano a Partner Center.
 - [x] **macOS: descartado Mac App Store.** El canal de macOS es **Uptodown**, igual que el resto del
       portfolio — decisión del usuario en la conversación del 2026-08-29. Sin certificado Apple
       Developer, sin notarización, sin revisión de tienda para esta plataforma.
-- [ ] ⚠️ **El tamaño del sidecar es el bloqueo real de las tiendas.** `torch` +
-      CUDA congelados con PyInstaller son 2–5 GB. La estrategia ya decidida —instalador base
-      pequeño + asistente de primer arranque que provisiona el entorno de OCR—
-      **no está construida todavía**, y es prerrequisito de cualquier envío a
-      tienda, no pulido posterior. El tamaño en sí **no es el bloqueo de política**: el límite MSIX es
-      25 GB por paquete, muy por encima de lo que hace falta (verificado en la snapshot de abajo).
+- [x] ⚠️ **Bloqueo del tamaño del sidecar, anulado a propósito (2026-08-30).** `torch` + CUDA
+      congelados con PyInstaller son 2–5 GB. La estrategia decidida el 2026-08-29 —instalador base
+      pequeño + asistente de primer arranque que provisiona el entorno de OCR— **sigue sin construirse**,
+      pero el usuario decidió explícitamente enviar igualmente el instalador completo (sin el asistente)
+      al wireado de MSIX de hoy, en vez de esperar a construirlo. El tamaño en sí no es el bloqueo de
+      política: el límite MSIX es 25 GB por paquete, muy por encima de lo que hace falta. Pendiente:
+      decidir si esta misma anulación aplica también al envío real a Partner Center (la certificación
+      de la Store es un paso posterior y manual, todavía no ejecutado) o si el asistente se construye
+      antes de dar ese paso.
 - [x] **Fichas de contenido para las dos tiendas redactadas (2026-08-30)**: `descripcionStore_es.md` /
       `_en.md` (Microsoft Store) y `descripcionStoreUptoDown_es.md` / `_en.md` (Uptodown, canal de
       macOS), en la raíz del repo, siguiendo el patrón validado en `dbv-md-reader`. **No enviar

@@ -11,6 +11,10 @@ y el proyecto adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 > Los cambios en desarrollo aparecerán aquí antes de ser publicados.
 
+---
+
+## [2.0.0] — 2026-08-30
+
 - Se añade **auto-actualización** por GitHub Releases con `tauri-plugin-updater`: botón «Buscar
   actualizaciones» en el modal Acerca de, con progreso de descarga y reinicio automático al terminar.
   Los artefactos van firmados con la clave minisign del proyecto.
@@ -75,6 +79,10 @@ y el proyecto adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 - Se actualizan las tablas de videos del `README.md` con **títulos oficiales de cada video** y enlaces clicables (`Ver video` / `Ver playlist`).
 - Se agrega una subsección de **casos de uso en video** dentro de `README.md` (sección Uso) para acceso directo a los tutoriales prácticos.
 - Se incorpora el **video directo de instalación en Windows** dentro de la guía para no informáticos (`docs/GUIA_NO_INFORMATICOS.md`).
+- Se añade **menú de aplicación nativo en macOS** (`src-tauri/src/lib.rs`, `mod macos_menu`): App/File/Edit/View/Window/Help con localización ES/EN automática según el idioma del sistema, acciones propias (Nuevo, Abrir, Exportar, Deshacer, Rehacer, Alternar vista previa) reenviadas al frontend por eventos.
+- Se añade una **puerta de build** (`scripts/check-tauri-globals.mjs`) que aborta `tauri dev`/`tauri build` si algún `.js` del frontend declara un identificador que colisiona con los globales que Tauri inyecta (p. ej. `isTauri`) — la misma clase de fallo que dejó la interfaz de escritorio muerta en un proyecto hermano ya publicado.
+- El `README.md` se reorganiza con **índice, instalación de escritorio priorizada sobre la web y enlace a este Changelog** en vez de listar novedades por versión; se añade `README.en.md` con la traducción completa.
+- Se muestran los **logotipos oficiales de la marca** en los modales «Acerca de» y «Ayuda».
 
 ---
 

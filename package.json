@@ -4,9 +4,12 @@
   "version": "2.0.0",
   "type": "module",
   "scripts": {
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "check:tauri-globals": "node scripts/check-tauri-globals.mjs",
+    "tauri:windows:build": "tauri-windows-bundle build"
   },
   "devDependencies": {
+    "@choochmeque/tauri-windows-bundle": "^0.1.28",
     "@tauri-apps/cli": "^2"
   }
 }

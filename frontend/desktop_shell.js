@@ -361,6 +361,13 @@ mountAlwaysOnTop();
 mountUpdater();
 paintRuntimeMode();
 
+// Menú nativo de macOS (File > Exportar…): el menú vive en Rust (no hay DOM
+// ahí), así que emite este evento a la ventana en vez de reimplementar el
+// desplegable. Ver src-tauri/src/lib.rs (mod macos_menu).
+if (tauriApi("event.listen")) {
+    window.__TAURI__.event.listen("menu-export", () => $("btn-export-menu")?.click());
+}
+
 document.addEventListener("keydown", (evt) => {
     if (evt.key !== "Escape") return;
     const modal = $("about-modal");

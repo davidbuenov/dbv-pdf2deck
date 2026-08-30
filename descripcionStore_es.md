@@ -5,8 +5,15 @@
 > **⚠️ No enviar todavía — bloqueantes pendientes (ver `dbv-specs-ops/task.md` → "Pendiente para las tiendas"):**
 > 1. No existe empaquetado MSIX de este proyecto. Falta reservar `Identity.Name`/`Publisher` en el Partner Center y generar el paquete (candidato: `@choochmeque/tauri-windows-bundle`, ya validado en `dbv-md-reader`).
 > 2. El sidecar con `torch`+CUDA pesa 2–5 GB. La estrategia decidida —instalador base pequeño + asistente de primer arranque que provisiona el runtime de OCR— **no está construida**, y es prerrequisito de certificación (política 10.2.4: hay que divulgar en la ficha que la app descarga el runtime tras instalar).
-> 3. No hay capturas de pantalla todavía (`docs/assets/store/` no existe en este repo, a diferencia de `dbv-md-reader`).
-> 4. `gh release list` no devuelve ninguna versión: no hay ningún artefacto que enviar hoy.
+> 3. `gh release list` no devuelve ninguna versión: no hay ningún artefacto que enviar hoy.
+>
+> **✅ Capturas e imágenes promocionales listas en `docs/assets/store/`:**
+> - Portada Hero (16:9): `hero_featured_banner_es.jpg`
+> - Captura 1 (Bienvenida/Dropzone): `01_hero_welcome_es.png`
+> - Captura 2 (Editor Visual WYSIWYG): `02_canvas_editor_wysiwyg_es.png`
+> - Captura 3 (Goma Mágica & Inpainting): `03_magic_eraser_inpainting_es.png`
+> - Captura 4 (Modo Vista Previa Limpia): `04_preview_mode_clean_es.png`
+> - Captura 5 (Menú de Exportación PPTX): `05_export_modal_powerpoint_es.png`
 >
 > Este fichero es la ficha de contenido lista para copiar en cuanto el empaquetado exista — no una confirmación de que ya se puede enviar a certificación.
 

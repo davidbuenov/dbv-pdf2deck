@@ -199,6 +199,14 @@ if (fileInput) {
     });
 }
 
+// Menú nativo de macOS (File > Nuevo/Abrir): el menú vive en Rust (no hay DOM
+// ahí), así que emite estos eventos a la ventana en vez de reimplementar la
+// lógica. Ver src-tauri/src/lib.rs (mod macos_menu).
+if (window.dbvApi?.runningInTauri) {
+    window.__TAURI__.event.listen("menu-new-file", () => resetToUploadPanel());
+    window.__TAURI__.event.listen("menu-open-file", () => fileInput && fileInput.click());
+}
+
 // Atajos globales de teclado
 window.addEventListener("keydown", (e) => {
     const isCtrl = e.ctrlKey || e.metaKey;

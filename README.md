@@ -1,17 +1,48 @@
 # DBV PDF2Deck 📄➡️📊
 
-> **Convierte PDFs e imágenes (incluidas infografías generadas por IA) en presentaciones de PowerPoint totalmente editables**  
-> *Converts image-only PDFs and AI-generated infographics into fully editable PowerPoint decks using local OCR and a visual canvas.*
+**🇪🇸 Español · [🇬🇧 English](./README.en.md)**
 
-> Open Source · Sin dependencias de nube · Aceleración GPU opcional
+> **Convierte PDFs e imágenes (incluidas infografías generadas por IA) en presentaciones de PowerPoint totalmente editables**
 
-La migración a aplicación de escritorio nativa con Tauri v2 está en curso. El modo web local se
-mantiene disponible durante la transición.
+> Open Source · 100% Local · Sin dependencias de nube · Aceleración GPU (CUDA)
 
 [![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-green?logo=fastapi)](https://fastapi.tiangolo.com)
+[![Tauri](https://img.shields.io/badge/Tauri-v2-FFC131?logo=tauri&logoColor=white)](https://tauri.app)
 [![EasyOCR](https://img.shields.io/badge/OCR-EasyOCR%20%2B%20PyTorch-orange)](https://github.com/JaidedAI/EasyOCR)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+
+<div align="center">
+  <img src="docs/assets/store/hero_featured_banner_es.jpg" alt="DBV PDF2Deck Banner" width="100%" style="border-radius: 12px; margin: 16px 0;" />
+</div>
+
+### 📸 Capturas de Pantalla (Desktop App v2.0.0)
+
+| 1. Inicio & Dropzone | 2. Editor Visual WYSIWYG |
+| :---: | :---: |
+| <img src="docs/assets/store/01_hero_welcome_es.png" width="100%" /> | <img src="docs/assets/store/02_canvas_editor_wysiwyg_es.png" width="100%" /> |
+| **3. Goma Mágica & Inpainting** | **4. Vista Previa Limpia & Exportación** |
+| <img src="docs/assets/store/03_magic_eraser_inpainting_es.png" width="100%" /> | <img src="docs/assets/store/04_preview_mode_clean_es.png" width="100%" /> |
+
+---
+
+## 📑 Índice
+
+- [¿Qué es DBV PDF2Deck?](#qué-es-dbv-pdf2deck)
+- [Caso de uso principal: Presentaciones de NotebookLM](#caso-de-uso-principal-presentaciones-de-notebooklm)
+- [Caso de uso clave: infografías generadas por IA](#caso-de-uso-clave-infografías-generadas-por-ia)
+- [Características](#características)
+- [🚀 Instalación de Escritorio (recomendada)](#-instalación-de-escritorio-recomendada)
+- [🎬 Videotutoriales Oficiales (YouTube)](#-videotutoriales-oficiales-youtube)
+- [Uso](#uso)
+- [Stack Tecnológico](#stack-tecnológico)
+- [🌐 Instalación de la Versión Web (avanzada)](#-instalación-de-la-versión-web-avanzada)
+- [Estructura del Proyecto](#estructura-del-proyecto)
+- [📋 Changelog](#-changelog)
+- [Contribuir](#contribuir)
+- [Licencia](#licencia)
+- [Agradecimientos](#agradecimientos)
+- [✍️ Autores y Créditos](#️-autores-y-créditos)
 
 ---
 
@@ -69,70 +100,46 @@ Las infografías creadas por modelos generativos suelen tener errores visuales y
 
 ---
 
-## Novedades de la versión 1.4.0
+## 🚀 Instalación de Escritorio (recomendada)
 
-## Novedades de la versión 1.5.0
+**Aplicación nativa de escritorio** para Windows, Linux y macOS (Tauri v2, con el motor de OCR integrado): sin instalar Python, sin entorno virtual, sin abrir una consola.
 
-- 🖼 **Entrada ampliada a imágenes** en el flujo principal (`.png`, `.jpg`, `.jpeg`, `.webp`) además de PDF.
-- ✨ **Enfoque reforzado en infografías de IA**: el flujo está optimizado para corregir erratas y defectos habituales de contenido generado.
-- 🧱 **Protección no invasiva para estabilidad**: límites de tamaño de archivo y resolución para evitar bloqueos por entradas gigantes, sin reescalar automáticamente.
-- ⚙️ **Configuración profesional con `.env`**: límites ajustables por entorno con plantilla `.env.example`.
+> ⚠️ El instalador incluye el motor de OCR completo (EasyOCR + PyTorch, con soporte opcional de aceleración GPU CUDA), así que puede pesar varios gigabytes — es el precio de que todo el procesamiento sea 100% local y sin conexión a la nube.
 
-## Novedades de la versión 1.4.0
+### 🪟 Windows
 
-- 🧩 **Instalación simplificada para Windows**:
-   - `instalar_y_ejecutar.cmd`: instalador 1 clic (detecta Python, crea venv, instala deps y arranca todo).
-   - `ejecutar_dbv.cmd`: arranque diario rápido.
-   - Compatibilidad total: los `.bat` siguen funcionando como alias.
-- 🧭 **Asistencia cuando falta Python**: el instalador abre automáticamente la página oficial de Python 3.12 y muestra pasos guiados.
-- 🧽 **Limpieza de fondo local con OpenCV Inpainting** (sin API key) para fondos complejos (gradientes, texturas suaves).
-- ☁️ **Modo de limpieza seleccionable**: `Auto / Local / Cloud` desde la barra superior.
-- 📡 **Terminal asíncrona en tiempo real**: conexión SSE desde el inicio del proceso, sin volcado tardío al final.
-- ⏱ **Heartbeat con tiempo transcurrido y ETA**: muestra progreso estimado por páginas ya procesadas.
-- ✍️ **Mejora UX en edición inline**: corrección de pérdida de foco al interactuar con la barra de edición.
-- 🗑 **Botón de eliminar bloque** en la barra de edición visual.
-- 🧱 **Rediseño horizontal de la zona IA** para reducir altura y mejorar legibilidad de controles.
+**[⬇️ Ver todas las versiones (Releases)](https://github.com/davidbuenov/dbv-pdf2deck/releases)**
 
----
+1. Descarga el instalador más reciente: `dbv-pdf2deck_x.y.z_x64-setup.exe`.
+2. Windows puede avisar de "Editor no reconocido" (SmartScreen) al no llevar firma comercial — pulsa **Más información → Ejecutar de todas formas**.
+3. Sigue el asistente de instalación. Uso diario: abre **DBV PDF2Deck** desde el menú de inicio.
+4. Para actualizar, usa el botón **Buscar actualizaciones** del panel "Acerca de" — descarga, instala y reinicia por ti, sin volver a esta página ni pasar por el navegador.
 
-## Novedades de la versión 1.3.0
+> 🏬 Publicación en Microsoft Store en preparación (empaquetado MSIX). Mientras tanto, usa el instalador de Releases.
 
-- ✍️ **Edición inline estilo PowerPoint**: edición directa dentro del bloque con barra contextual blanca (sin dependencia del modal clásico).
-- 🎛️ **Toolbar contextual avanzada**: fuente, tamaño, alineación, color, transparencia, subrayado, interlineado y control de dimensiones `W/H`.
-- ↔️ **Selección por rectángulo**: arrastra en zona vacía para seleccionar múltiples bloques de una vez.
-- 🧩 **Paneles movibles**: barras flotantes arrastrables para evitar solapar contenido crítico.
-- 📏 **Calibración validada**: consistencia tipográfica PDF/PPTX dentro de tolerancias estrechas.
+### 🐧 Linux
 
----
+**[⬇️ Descarga el `.deb` o el `.AppImage` desde Releases](https://github.com/davidbuenov/dbv-pdf2deck/releases)** — se generan automáticamente en cada versión.
 
-## Stack Tecnológico
+- **`.deb`** (Debian, Ubuntu, Linux Mint y derivadas): `sudo dpkg -i dbv-pdf2deck_x.y.z_amd64.deb` (o doble clic desde el gestor de archivos).
+- **`.AppImage`** (cualquier distribución): dale permisos de ejecución (`chmod +x dbv-pdf2deck_x.y.z_amd64.AppImage`) y ejecútalo directamente.
 
-### Backend
-- **Python 3.12** · FastAPI · Uvicorn
-- **PyMuPDF** (`fitz`) — Extracción y exportación de PDF
-- **EasyOCR + PyTorch** — Motor OCR local (CPU o GPU CUDA)
-- **python-pptx** — Generación de PowerPoint
-- **Pillow** — Procesamiento de imágenes
+### 🍎 macOS
 
-### Frontend
-- **Vanilla JavaScript** (ES Modules, sin frameworks)
-- **HTML5 Canvas** — Motor de edición visual
-- **CSS3 Glassmorphism** — Interfaz moderna con dark mode
+**[⬇️ Descarga el `.dmg` desde Releases](https://github.com/davidbuenov/dbv-pdf2deck/releases)** — se genera automáticamente en cada versión vía CI.
 
----
+No está firmado ni notarizado por Apple (el proyecto no usa la cuenta de pago Apple Developer Program), así que macOS bloqueará la primera apertura ("no se puede abrir porque su desarrollador no puede verificarse"). Para abrirlo:
 
-## Requisitos del Sistema
+- Clic derecho (o `Ctrl` + clic) sobre `DBV PDF2Deck.app` → **Abrir** → confirmar en el diálogo. Solo hace falta la primera vez.
+- O, desde la Terminal: `xattr -cr "DBV PDF2Deck.app"` antes de abrirlo.
 
-- **Sistema operativo:** Windows 10/11 (64-bit)
-- **Python:** 3.12.x (recomendado) · [Descargar](https://www.python.org/downloads/release/python-31210/)
-- **Navegador:** Chrome, Edge o Firefox moderno
-- **GPU (opcional):** Tarjeta NVIDIA con soporte CUDA 12.1 para aceleración
-
-> ⚠️ **Python 3.13 no es compatible** con PyTorch-CUDA actualmente. Usa la versión 3.12.
+> 🟢 Publicación en Uptodown en preparación. Mientras tanto, descarga el `.dmg` desde Releases.
 
 ---
 
 ## 🎬 Videotutoriales Oficiales (YouTube)
+
+> 🎞️ Grabados con la **versión 1.5.0** (interfaz web) — el flujo de carga, OCR y edición visual es el mismo en la versión de escritorio actual, así que siguen siendo la mejor referencia paso a paso.
 
 Si prefieres aprender viendo el proceso paso a paso, tienes una lista oficial con demostraciones reales:
 
@@ -146,11 +153,117 @@ Si prefieres aprender viendo el proceso paso a paso, tienes una lista oficial co
 
 ---
 
-## Instalación y Arranque
+## Uso
+
+### Casos de uso en video
+
+Si quieres ver el flujo real antes de probarlo, estos videos (grabados con la versión 1.5.0) muestran escenarios prácticos:
+
+| Caso práctico | Video |
+|---|---|
+| DBV PDF2Deck: Convierte PDFs de NotebookLM en PowerPoint (Guía de Uso) | [Ver video](https://www.youtube.com/watch?v=5ct7S_8XMw0&list=PLnNbmcjjevxvysGvmr0qEV505IoHWxo_p&index=3) |
+| DBV PDF2Deck: Limpia fondos complejos con IA (Gemini) y OpenCV (Local) | [Ver video](https://www.youtube.com/watch?v=3hxGlBWxp2Y&list=PLnNbmcjjevxvysGvmr0qEV505IoHWxo_p&index=4) |
+| DBV PDF2Deck: Cómo editar y corregir texto en Infografías de IA (Ejemplo Nanobanana) | [Ver video](https://www.youtube.com/watch?v=vGHM6eGI1VY&list=PLnNbmcjjevxvysGvmr0qEV505IoHWxo_p&index=5) |
+
+### Límites de entrada (modo no invasivo)
+
+Para mantener estabilidad y tiempos de respuesta, el backend aplica límites por defecto:
+
+- Tamaño máximo de archivo: **20 MB**
+- Lado máximo de imagen/página renderizada: **8000 px**
+- Máximo total de píxeles por imagen/página: **25.000.000 px**
+
+Si un archivo excede estos límites, se rechaza con un error claro (sin reescalado automático).
+
+Puedes ajustar estos valores por variables de entorno:
+
+- `DBV_MAX_UPLOAD_MB` (por defecto `20`)
+- `DBV_MAX_IMAGE_SIDE_PX` (por defecto `8000`)
+- `DBV_MAX_IMAGE_TOTAL_PIXELS` (por defecto `25000000`)
+
+Soporte `.env` incluido:
+
+- Copia `.env.example` como `.env`
+- Puedes guardar `.env` en la raíz del proyecto o dentro de `backend/`
+- El backend carga ambos (`backend/.env` y raíz `.env`) sin sobrescribir variables ya definidas en el sistema
+
+### Editor Visual
+
+1. **Arrastra y suelta** tu PDF o imagen en la zona de carga (o haz clic para seleccionarlo).
+2. Espera a que el OCR procese las páginas (4–40 segundos según GPU/CPU).
+3. Haz clic en cualquier caja de texto para entrar en **edición inline** directamente sobre el bloque.
+4. Usa la barra contextual para cambiar fuente, tamaño, color, fondo, transparencia, **alineación**, **subrayado** e **interlineado**.
+5. **Ctrl+Click** en varios bloques para seleccionarlos juntos:
+   - **⚖️ Igualar Estilos**: aplica el mismo tamaño, colores y alineación a todos.
+   - **🔗 Fusionar**: une los bloques en uno solo (texto concatenado con saltos de línea).
+6. También puedes seleccionar varios bloques arrastrando un rectángulo en una zona vacía del canvas.
+7. Navega entre páginas con los controles de paginación.
+
+### Exportación
+
+En la barra de salida puedes marcar qué formatos quieres generar (`.pdf`, `.pptx`, `.md`) antes de descargar.
+
+Pulsa el botón **"📥 Descargar Selección"** para generar solo los formatos marcados. Se descargará un archivo `.zip` con:
+- `documento_editado.pptx` — Presentación de PowerPoint con cajas editables
+- `documento_editado.pdf` — PDF con el texto modificado superpuesto
+- `documento_editado.md` — Versión Markdown pensada para reutilización textual, documentación o LLMs
+
+Cuando el PDF original contiene hipervínculos ocultos, la exportación Markdown intenta preservarlos en formato `[texto](url)`.
+
+### IA Generativa y Limpieza Local (Opcional)
+
+El botón **✨ Limpiar Fondo** soporta tres modos:
+
+- **Auto**: usa Cloud si hay API key; si no, usa Local.
+- **Local (OpenCV)**: inpainting offline, no requiere API key.
+- **Cloud (AI Studio)**: limpieza con IA generativa (requiere API key).
+
+Para usar modo Cloud:
+1. Obtén una API Key gratuita en [Google AI Studio](https://aistudio.google.com/).
+2. Pégala en el campo **"Google AI Studio API Key"** de la barra superior.
+3. Selecciona **Cloud** (o deja **Auto**) y pulsa **"✨ Limpiar Fondo"**.
+
+> La API Key se guarda localmente en tu navegador (`localStorage`). Nunca se envía a nuestros servidores.
+
+> 💡 Consejo de edición rápida: usa **Ctrl+Click** sobre varios bloques para activar la multi-selección y editar estilos por lotes.
+
+---
+
+## Stack Tecnológico
+
+### Backend
+- **Python 3.12** · FastAPI · Uvicorn
+- **EasyOCR + PyTorch** — Motor OCR local (CPU o GPU CUDA)
+- **python-pptx** — Generación de PowerPoint
+- **Pillow** — Procesamiento de imágenes
+
+### Frontend
+- **Vanilla JavaScript** (ES Modules, sin frameworks)
+- **HTML5 Canvas** — Motor de edición visual
+- **CSS3 Glassmorphism** — Interfaz moderna con dark mode
+
+### Escritorio
+- **Tauri v2 (Rust)** — empaquetado nativo multiplataforma (Windows/Linux/macOS), con el backend Python embebido como *sidecar*.
+- **WebView del sistema** — WebView2 (Windows) / WebKitGTK (Linux) / WKWebView (macOS), sin empaquetar un Chromium completo.
+
+---
+
+## 🌐 Instalación de la Versión Web (avanzada)
+
+Esta vía ejecuta el código fuente directamente con Python — pensada para desarrollo, o si prefieres no usar el instalador de escritorio.
 
 > 🧭 **¿No eres informático/a?** Sigue la guía completa paso a paso:
 > - Windows: [Guía para No Informáticos (Windows)](docs/GUIA_NO_INFORMATICOS.md)
 > - macOS: [Guía para No Informáticos (macOS)](docs/GUIA_MAC_NO_INFORMATICOS.md)
+
+### Requisitos del Sistema
+
+- **Sistema operativo:** Windows 10/11 (64-bit)
+- **Python:** 3.12.x (recomendado) · [Descargar](https://www.python.org/downloads/release/python-31210/)
+- **Navegador:** Chrome, Edge o Firefox moderno
+- **GPU (opcional):** Tarjeta NVIDIA con soporte CUDA 12.1 para aceleración
+
+> ⚠️ **Python 3.13 no es compatible** con PyTorch-CUDA actualmente. Usa la versión 3.12.
 
 ### Opción recomendada (Windows, 1 clic)
 
@@ -274,82 +387,6 @@ Si has hecho cambios locales propios y `git pull` falla, guarda tu trabajo (comm
 
 ---
 
-## Uso
-
-### Casos de uso en video
-
-Si quieres ver el flujo real antes de probarlo, estos videos muestran escenarios prácticos:
-
-| Caso práctico | Video |
-|---|---|
-| DBV PDF2Deck: Convierte PDFs de NotebookLM en PowerPoint (Guía de Uso) | [Ver video](https://www.youtube.com/watch?v=5ct7S_8XMw0&list=PLnNbmcjjevxvysGvmr0qEV505IoHWxo_p&index=3) |
-| DBV PDF2Deck: Limpia fondos complejos con IA (Gemini) y OpenCV (Local) | [Ver video](https://www.youtube.com/watch?v=3hxGlBWxp2Y&list=PLnNbmcjjevxvysGvmr0qEV505IoHWxo_p&index=4) |
-| DBV PDF2Deck: Cómo editar y corregir texto en Infografías de IA (Ejemplo Nanobanana) | [Ver video](https://www.youtube.com/watch?v=vGHM6eGI1VY&list=PLnNbmcjjevxvysGvmr0qEV505IoHWxo_p&index=5) |
-
-### Límites de entrada (modo no invasivo)
-
-Para mantener estabilidad y tiempos de respuesta, el backend aplica límites por defecto:
-
-- Tamaño máximo de archivo: **20 MB**
-- Lado máximo de imagen/página renderizada: **8000 px**
-- Máximo total de píxeles por imagen/página: **25.000.000 px**
-
-Si un archivo excede estos límites, se rechaza con un error claro (sin reescalado automático).
-
-Puedes ajustar estos valores por variables de entorno:
-
-- `DBV_MAX_UPLOAD_MB` (por defecto `20`)
-- `DBV_MAX_IMAGE_SIDE_PX` (por defecto `8000`)
-- `DBV_MAX_IMAGE_TOTAL_PIXELS` (por defecto `25000000`)
-
-Soporte `.env` incluido:
-
-- Copia `.env.example` como `.env`
-- Puedes guardar `.env` en la raíz del proyecto o dentro de `backend/`
-- El backend carga ambos (`backend/.env` y raíz `.env`) sin sobrescribir variables ya definidas en el sistema
-
-### Editor Visual
-
-1. **Arrastra y suelta** tu PDF o imagen en la zona de carga (o haz clic para seleccionarlo).
-2. Espera a que el OCR procese las páginas (4–40 segundos según GPU/CPU).
-3. Haz clic en cualquier caja de texto para entrar en **edición inline** directamente sobre el bloque.
-4. Usa la barra contextual para cambiar fuente, tamaño, color, fondo, transparencia, **alineación**, **subrayado** e **interlineado**.
-5. **Ctrl+Click** en varios bloques para seleccionarlos juntos:
-   - **⚖️ Igualar Estilos**: aplica el mismo tamaño, colores y alineación a todos.
-   - **🔗 Fusionar**: une los bloques en uno solo (texto concatenado con saltos de línea).
-6. También puedes seleccionar varios bloques arrastrando un rectángulo en una zona vacía del canvas.
-7. Navega entre páginas con los controles de paginación.
-
-### Exportación
-
-En la barra de salida puedes marcar qué formatos quieres generar (`.pdf`, `.pptx`, `.md`) antes de descargar.
-
-Pulsa el botón **"📥 Descargar Selección"** para generar solo los formatos marcados. Se descargará un archivo `.zip` con:
-- `documento_editado.pptx` — Presentación de PowerPoint con cajas editables
-- `documento_editado.pdf` — PDF con el texto modificado superpuesto
-- `documento_editado.md` — Versión Markdown pensada para reutilización textual, documentación o LLMs
-
-Cuando el PDF original contiene hipervínculos ocultos, la exportación Markdown intenta preservarlos en formato `[texto](url)`.
-
-### IA Generativa y Limpieza Local (Opcional)
-
-El botón **✨ Limpiar Fondo** soporta tres modos:
-
-- **Auto**: usa Cloud si hay API key; si no, usa Local.
-- **Local (OpenCV)**: inpainting offline, no requiere API key.
-- **Cloud (AI Studio)**: limpieza con IA generativa (requiere API key).
-
-Para usar modo Cloud:
-1. Obtén una API Key gratuita en [Google AI Studio](https://aistudio.google.com/).
-2. Pégala en el campo **"Google AI Studio API Key"** de la barra superior.
-3. Selecciona **Cloud** (o deja **Auto**) y pulsa **"✨ Limpiar Fondo"**.
-
-> La API Key se guarda localmente en tu navegador (`localStorage`). Nunca se envía a nuestros servidores.
-
-> 💡 Consejo de edición rápida: usa **Ctrl+Click** sobre varios bloques para activar la multi-selección y editar estilos por lotes.
-
----
-
 ## Estructura del Proyecto
 
 ```
@@ -359,27 +396,38 @@ dbv-pdf2deck/
 │   │   └── endpoints.py        # Rutas REST (/process, /export)
 │   ├── core/
 │   │   ├── ocr_engine.py       # Motor EasyOCR + detección GPU
-│   │   ├── pdf_renderer.py     # Extracción de bloques nativos (PyMuPDF)
+│   │   ├── pdf_renderer.py     # Extracción de bloques nativos
 │   │   ├── exporter_engine.py  # Exportación PDF y PPTX
 │   │   └── result.py           # Patrón Result (Ok/Err)
 │   ├── main.py                 # Arranque FastAPI + CORS
 │   ├── requirements.txt        # Dependencias Python
 │   └── test_cuda.py            # Script de diagnóstico GPU
-├── frontend/                   # Interfaz Web
+├── frontend/                   # Interfaz Web/Escritorio (compartida)
 │   ├── index.html              # Estructura principal
 │   ├── styles.css              # Diseño Glassmorphism Dark Mode
 │   ├── canvas_engine.js        # Motor de edición visual Canvas
+│   ├── desktop_shell.js        # Chrome de escritorio (Tauri)
 │   └── main.js                 # Comunicación con el backend
+├── src-tauri/                  # Empaquetado nativo de escritorio (Rust/Tauri v2)
+│   ├── src/lib.rs              # Sidecar Python, menú nativo de macOS, comandos IPC
+│   └── tauri.conf.json         # Configuración de la app y del bundler
 ├── docs/                       # Documentación pública
 │   ├── instalar_cuda.md        # Guía de instalación GPU
 │   └── STYLEGUIDE.md           # Guía de estilo de código
-├── instalar_y_ejecutar.cmd     # Instalador 1 clic (Windows)
-├── ejecutar_dbv.cmd            # Arranque rápido diario
+├── .github/workflows/          # CI: release-windows/linux/macos.yml
+├── instalar_y_ejecutar.cmd     # Instalador 1 clic (Windows, versión web)
+├── ejecutar_dbv.cmd            # Arranque rápido diario (versión web)
 ├── start_dev.cmd               # Entrada principal compatible
 ├── stop_dev.cmd                # Detención de servicios
 ├── start_dev.bat               # Alias legacy -> .cmd
 └── stop_dev.bat                # Alias legacy -> .cmd
 ```
+
+---
+
+## 📋 Changelog
+
+Consulta [CHANGELOG.md](CHANGELOG.md) para ver el historial completo de versiones y novedades.
 
 ---
 
@@ -407,9 +455,9 @@ Distribuido bajo la licencia **MIT**. Ver [LICENSE](LICENSE) para más detalles.
 ## Agradecimientos
 
 - [EasyOCR](https://github.com/JaidedAI/EasyOCR) — Motor OCR open source
-- [PyMuPDF](https://pymupdf.readthedocs.io/) — Procesamiento de PDF en Python
 - [FastAPI](https://fastapi.tiangolo.com/) — Framework web asíncrono
 - [python-pptx](https://python-pptx.readthedocs.io/) — Generación de PowerPoint
+- [Tauri](https://tauri.app/) — Framework para aplicaciones de escritorio nativas multiplataforma
 
 ---
 
@@ -433,8 +481,8 @@ Este proyecto fue construido mediante un **flujo de trabajo de codificación asi
 | Herramienta | Rol en el proyecto |
 |---|---|
 | **[Antigravity](https://antigravity.google)** · *by Google DeepMind* | Agente principal de codificación. Backend, frontend, motor de exportación y arquitectura general. |
-| **[Gemini](https://gemini.google.com)** · *by Google* | Motor de IA generativa que impulsa la función opcional de limpieza de fondos. |
-| **[Claude](https://claude.ai)** · *by Anthropic* | Agente secundario de codificación. Configuración de GPU, depuración y documentación. |
+| **[Gemini](https://gemini.google.com)** · *by Google* | Motor de IA generativa que impulsa la función opcional de limpieza de fondos, y agente de codificación en la migración a escritorio. |
+| **[Claude](https://claude.ai)** · *by Anthropic* | Agente secundario de codificación. Migración a escritorio nativo (Tauri v2), configuración de GPU, depuración y documentación. |
 | **GPT Codex** · *by OpenAI* | Programación en pareja para implementación, refactor, depuración y cierre de funcionalidades de la versión 1.4.0. |
 
 > *"La visión fue humana. El código fue una conversación."*

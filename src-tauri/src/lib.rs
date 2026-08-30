@@ -1,7 +1,7 @@
 use std::net::TcpListener;
 use std::sync::{Mutex, OnceLock};
 
-use tauri::{Manager, RunEvent};
+use tauri::{Emitter, Manager, RunEvent};
 use tauri_plugin_shell::{process::CommandChild, ShellExt};
 
 static BACKEND_PORT: OnceLock<u16> = OnceLock::new();
@@ -73,6 +73,178 @@ fn get_backend_port() -> Result<u16, String> {
         .ok_or_else(|| "El backend todavía no ha iniciado".to_string())
 }
 
+/// Barra de menú nativa de macOS. Estructura y patrón portados literalmente de
+/// `dbv-md-reader` (`src-tauri/src/lib.rs`), ya probados por un usuario real de
+/// macOS — ver punto 10 de §6 en `dbv-specs-ops/docs/NATIVE_DESKTOP_APPS.md`.
+/// Solo File y View cambian, para apuntar a las acciones reales de PDF2Deck en
+/// vez de a las de un editor de Markdown.
+#[cfg(target_os = "macos")]
+mod macos_menu {
+    use tauri::menu::{
+        AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu, HELP_SUBMENU_ID,
+        WINDOW_SUBMENU_ID,
+    };
+    use tauri::{AppHandle, Runtime};
+
+    /// Los items predefinidos de macOS (Cortar/Copiar/Pegar…) los localiza el
+    /// propio sistema según su idioma — nuestros items propios (Abrir archivo,
+    /// Exportar…) no tienen esa magia gratis, así que replican el mismo
+    /// criterio a mano para no acabar con un menú medio español medio inglés
+    /// según el idioma del Mac. Independiente del selector de idioma ES/EN de
+    /// la propia app (ese vive solo en el frontend/localStorage, no accesible
+    /// todavía desde Rust en el momento en que se construye el menú, al
+    /// arrancar antes de que cargue la webview).
+    fn is_spanish_system() -> bool {
+        sys_locale::get_locale()
+            .map(|l| l.to_lowercase().starts_with("es"))
+            .unwrap_or(false)
+    }
+
+    pub fn build<R: Runtime>(handle: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+        let es = is_spanish_system();
+        let pkg_info = handle.package_info();
+        let config = handle.config();
+        let about_metadata = AboutMetadata {
+            name: Some(pkg_info.name.clone()),
+            version: Some(pkg_info.version.to_string()),
+            copyright: config.bundle.copyright.clone(),
+            authors: config.bundle.publisher.clone().map(|p| vec![p]),
+            ..Default::default()
+        };
+
+        let app_menu = Submenu::with_items(
+            handle,
+            pkg_info.name.clone(),
+            true,
+            &[
+                &PredefinedMenuItem::about(handle, None, Some(about_metadata))?,
+                &PredefinedMenuItem::separator(handle)?,
+                &PredefinedMenuItem::services(handle, None)?,
+                &PredefinedMenuItem::separator(handle)?,
+                &PredefinedMenuItem::hide(handle, None)?,
+                &PredefinedMenuItem::hide_others(handle, None)?,
+                &PredefinedMenuItem::separator(handle)?,
+                &PredefinedMenuItem::quit(handle, None)?,
+            ],
+        )?;
+
+        let new_file_item = MenuItem::with_id(
+            handle,
+            "new_file",
+            if es { "Nuevo" } else { "New" },
+            true,
+            Some("CmdOrCtrl+N"),
+        )?;
+        let open_file_item = MenuItem::with_id(
+            handle,
+            "open_file",
+            if es { "Abrir archivo…" } else { "Open File…" },
+            true,
+            Some("CmdOrCtrl+O"),
+        )?;
+        let export_item = MenuItem::with_id(
+            handle,
+            "export",
+            if es { "Exportar…" } else { "Export…" },
+            true,
+            None::<&str>,
+        )?;
+        let file_menu = Submenu::with_items(
+            handle,
+            "File",
+            true,
+            &[
+                &new_file_item,
+                &PredefinedMenuItem::separator(handle)?,
+                &open_file_item,
+                &PredefinedMenuItem::separator(handle)?,
+                &export_item,
+                &PredefinedMenuItem::separator(handle)?,
+                &PredefinedMenuItem::close_window(handle, None)?,
+            ],
+        )?;
+
+        // Deshacer/Rehacer reales del canvas (pila propia en canvas_engine.js), no
+        // los del WebView: los predefinidos de Tauri solo deshacen edición de texto
+        // nativa y no tocan el estado del lienzo.
+        let undo_item = MenuItem::with_id(
+            handle,
+            "undo",
+            if es { "Deshacer" } else { "Undo" },
+            true,
+            Some("CmdOrCtrl+Z"),
+        )?;
+        let redo_item = MenuItem::with_id(
+            handle,
+            "redo",
+            if es { "Rehacer" } else { "Redo" },
+            true,
+            Some("CmdOrCtrl+Shift+Z"),
+        )?;
+        let edit_menu = Submenu::with_items(
+            handle,
+            "Edit",
+            true,
+            &[
+                &undo_item,
+                &redo_item,
+                &PredefinedMenuItem::separator(handle)?,
+                &PredefinedMenuItem::cut(handle, None)?,
+                &PredefinedMenuItem::copy(handle, None)?,
+                &PredefinedMenuItem::paste(handle, None)?,
+                &PredefinedMenuItem::select_all(handle, None)?,
+            ],
+        )?;
+
+        // Sin acelerador propio: la app ya usa la tecla "P" sola (sin Cmd) para no
+        // chocar con Cmd+P, reservado por el sistema para Imprimir.
+        let toggle_preview_item = MenuItem::with_id(
+            handle,
+            "toggle_preview",
+            if es { "Alternar vista previa" } else { "Toggle Preview" },
+            true,
+            None::<&str>,
+        )?;
+        let view_menu = Submenu::with_items(
+            handle,
+            "View",
+            true,
+            &[
+                &toggle_preview_item,
+                &PredefinedMenuItem::separator(handle)?,
+                &PredefinedMenuItem::fullscreen(handle, None)?,
+            ],
+        )?;
+
+        let window_menu = Submenu::with_id_and_items(
+            handle,
+            WINDOW_SUBMENU_ID,
+            "Window",
+            true,
+            &[
+                &PredefinedMenuItem::minimize(handle, None)?,
+                &PredefinedMenuItem::maximize(handle, None)?,
+                &PredefinedMenuItem::separator(handle)?,
+                &PredefinedMenuItem::close_window(handle, None)?,
+            ],
+        )?;
+
+        let help_menu = Submenu::with_id_and_items(handle, HELP_SUBMENU_ID, "Help", true, &[])?;
+
+        Menu::with_items(
+            handle,
+            &[
+                &app_menu,
+                &file_menu,
+                &edit_menu,
+                &view_menu,
+                &window_menu,
+                &help_menu,
+            ],
+        )
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -85,6 +257,16 @@ pub fn run() {
             #[cfg(desktop)]
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
+
+            // macOS espera la barra de menú superior del SO (Cmd+Q, Cmd+H, Editar
+            // con Cortar/Copiar/Pegar, etc.) — sin ella la app no se siente nativa.
+            // Windows/Linux ya tienen su propia UI para esto dentro de la ventana,
+            // así que se deja intacto.
+            #[cfg(target_os = "macos")]
+            {
+                let menu = macos_menu::build(app.handle())?;
+                app.handle().set_menu(menu)?;
+            }
 
             let listener = TcpListener::bind("127.0.0.1:0")
                 .map_err(|error| format!("No se pudo reservar puerto para el backend: {error}"))?;
@@ -197,6 +379,22 @@ pub fn run() {
                 }
             }
             Ok(())
+        })
+        .on_menu_event(|app, event| {
+            // Los items propios del menú de macOS (Nuevo/Abrir/Exportar/Deshacer/
+            // Rehacer/Alternar vista previa) reusan el flujo que ya tiene el
+            // frontend para su botón de barra o atajo de teclado equivalente —
+            // solo hace falta avisar a la ventana, no reimplementar la lógica en
+            // Rust. Lista blanca contra los ítems predefinidos (about/quit/hide/...),
+            // que no deben reenviarse como evento. `app.emit` (no una ventana
+            // concreta por etiqueta) para no acoplarse al nombre "main" de
+            // `tauri.conf.json` ni fallar en silencio si esa ventana no existiera.
+            const MENU_ACTION_IDS: &[&str] =
+                &["new_file", "open_file", "export", "undo", "redo", "toggle_preview"];
+            let id = event.id().as_ref();
+            if MENU_ACTION_IDS.contains(&id) {
+                let _ = app.emit(&format!("menu-{}", id.replace('_', "-")), ());
+            }
         })
         .invoke_handler(tauri::generate_handler![get_backend_port, is_packaged_app, save_binary_file])
         .build(tauri::generate_context!())

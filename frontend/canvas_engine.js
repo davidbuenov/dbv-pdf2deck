@@ -2824,6 +2824,16 @@ function mountKeyboardShortcuts() {
     if (btnRedo) btnRedo.onclick = performRedo;
     if (btnPreview) btnPreview.onclick = () => togglePreviewMode();
     if (floatingBadge) floatingBadge.onclick = () => togglePreviewMode(false);
+
+    // Menú nativo de macOS (Edit > Deshacer/Rehacer, View > Alternar vista
+    // previa): el menú vive en Rust (no hay DOM ahí), así que emite estos
+    // eventos a la ventana en vez de reimplementar la lógica. Ver
+    // src-tauri/src/lib.rs (mod macos_menu).
+    if (window.dbvApi?.runningInTauri) {
+        window.__TAURI__.event.listen("menu-undo", performUndo);
+        window.__TAURI__.event.listen("menu-redo", performRedo);
+        window.__TAURI__.event.listen("menu-toggle-preview", () => togglePreviewMode());
+    }
 }
 
 window.dbvCanvasEngine = {
