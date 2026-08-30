@@ -135,6 +135,36 @@ class TestPdfExport:
         assert "Modificacion superpuesta en p1" in page1_text
         assert "Contenido original inalterado en pagina 2" in page2_text
 
+    def test_build_pdf_export_from_original_with_unmodified_pages_does_not_crash(self, tmp_path: Path) -> None:
+        source_pdf = tmp_path / "original.pdf"
+        _generate_synthetic_pdf(source_pdf, pages_count=3)
+
+        # Payload con bloques pero NINGUNO modificado (caso típico de exportar sin editar)
+        payload = {
+            "export_mode": "only_modified",
+            "pages": [
+                {
+                    "page_num": i,
+                    "render_width_px": 600,
+                    "render_height_px": 400,
+                    "page_width_pt": 600,
+                    "page_height_pt": 400,
+                    "blocks": [
+                        {
+                            "bbox": [50, 50, 400, 100],
+                            "text": f"Texto no tocado p{i}",
+                            "is_modified": False,
+                        }
+                    ],
+                }
+                for i in range(3)
+            ],
+        }
+
+        merged_bytes = build_pdf_export_from_original(payload, source_pdf)
+        reader = PdfReader(io.BytesIO(merged_bytes))
+        assert len(reader.pages) == 3
+
 
 class TestPptxExport:
     def test_build_pptx_export_structure(self) -> None:

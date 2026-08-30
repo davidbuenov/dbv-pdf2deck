@@ -15,6 +15,7 @@ let currentActivePageIndex = 0;
 let currentZoomScale = 1.0;
 let _userHasZoomed = false;
 let selectedBlockIndices = []; // Índices de bloques en modo multi-selección (Ctrl+Click)
+let isPreviewMode = false; // Modo de vista previa limpia sin cajas, handles ni guías
 
 // Los listeners globales se montan una sola vez. Abrir un segundo documento
 // vuelve a llamar a initPagination() y mountKeyboardShortcuts() sobre el mismo
@@ -22,6 +23,51 @@ let selectedBlockIndices = []; // Índices de bloques en modo multi-selección (
 // se hubieran abierto en la sesión.
 let _globalShortcutsMounted = false;
 let _undoShortcutsMounted = false;
+
+/**
+ * Conmuta o establece el modo vista previa limpia (sin guías de edición, handles ni bordes).
+ * @param {boolean} [forceState] Estado forzado opcional.
+ */
+function togglePreviewMode(forceState) {
+    if (!globalPayload || !globalPayload.pages) return;
+    
+    if (typeof forceState === "boolean") {
+        isPreviewMode = forceState;
+    } else {
+        isPreviewMode = !isPreviewMode;
+    }
+
+    const btnPreview = document.getElementById("btn-preview-mode");
+    const floatingBadge = document.getElementById("preview-floating-badge");
+    const _t = (k, v) => window.DBV_I18N ? window.DBV_I18N.t(k, v) : k;
+
+    if (isPreviewMode) {
+        if (inlineEditorSession) {
+            _closeInlineEditor(true);
+        }
+        _hideFloatingToolbar();
+        selectedBlockIndices = [];
+        currentTargetBlock = null;
+        
+        if (btnPreview) {
+            btnPreview.classList.add("active");
+            btnPreview.title = _t("toolbar.previewExitTitle");
+        }
+        if (floatingBadge) {
+            floatingBadge.hidden = false;
+        }
+    } else {
+        if (btnPreview) {
+            btnPreview.classList.remove("active");
+            btnPreview.title = _t("toolbar.previewTitle");
+        }
+        if (floatingBadge) {
+            floatingBadge.hidden = true;
+        }
+    }
+
+    repaintCanvas();
+}
 
 /**
  * Escribe la etiqueta de un botón de la barra sin destruir su icono SVG.
@@ -90,18 +136,53 @@ const _measurementCtx = _measurementCanvas.getContext("2d");
 // ===== Sistema de Undo/Redo =====
 let undoStack = [];
 let redoStack = [];
-const MAX_UNDO_SIZE = 50; // Límite de estados guardados para no saturar memoria
+const MAX_UNDO_SIZE = 30; // Límite de estados guardados para no saturar memoria
 
 /**
- * Crea un snapshot profundo de todos los bloques en el documento actual.
- * @returns {Object} Estado serializable del documento.
+ * Actualiza el estado visual habilitado/deshabilitado de los botones Undo y Redo.
+ */
+function _updateUndoRedoUI() {
+    const btnUndo = document.getElementById("btn-undo");
+    const btnRedo = document.getElementById("btn-redo");
+    if (btnUndo) btnUndo.disabled = undoStack.length === 0;
+    if (btnRedo) btnRedo.disabled = redoStack.length === 0;
+}
+
+/**
+ * Reemplaza la imagen de fondo del canvas activo de forma instantánea sin recrear el DOM.
+ * @param {string} newBase64
+ * @returns {Promise<void>}
+ */
+function replaceCanvasBackground(newBase64) {
+    return new Promise((resolve) => {
+        if (!canvasScope || !newBase64) return resolve();
+        const img = new Image();
+        img.onload = () => {
+            canvasScope.bgImage = img;
+            repaintCanvas();
+            resolve();
+        };
+        img.onerror = () => {
+            console.error("[DBV Canvas] Error cargando nuevo fondo en replaceCanvasBackground");
+            resolve();
+        };
+        img.src = newBase64.startsWith("data:") ? newBase64 : `data:image/png;base64,${newBase64}`;
+    });
+}
+
+/**
+ * Crea un snapshot profundo del estado de la página actual (bloques e imagen de fondo).
+ * @returns {Object|null} Estado serializable de la página activa.
  */
 function createSnapshot() {
-    if (!globalPayload || !globalPayload.pages) return null;
-    return JSON.parse(JSON.stringify({
-        pages: globalPayload.pages,
-        activePageIndex: currentActivePageIndex
-    }));
+    const page = globalPayload?.pages?.[currentActivePageIndex];
+    if (!page) return null;
+    return {
+        pageIndex: currentActivePageIndex,
+        blocks: JSON.parse(JSON.stringify(page.blocks || [])),
+        image_base64: page.image_base64,
+        ai_cleaned_bg: !!page.ai_cleaned_bg
+    };
 }
 
 /**
@@ -119,58 +200,80 @@ function saveToUndoStack() {
     
     // Limpiar redo al hacer un nuevo cambio
     redoStack = [];
+    _updateUndoRedoUI();
 }
 
 /**
  * Restaura un snapshot al estado actual.
  * @param {Object} snapshot El estado a restaurar.
  */
-function restoreSnapshot(snapshot) {
-    if (!snapshot || !snapshot.pages) return;
+async function restoreSnapshot(snapshot) {
+    if (!snapshot || !globalPayload?.pages) return;
     
-    globalPayload.pages = snapshot.pages;
-    currentActivePageIndex = snapshot.activePageIndex || 0;
-    cycleViewEngine();
+    // Cerrar cualquier edición inline activa para evitar conflictos de punteros
+    if (inlineEditorSession) {
+        _closeInlineEditor(false);
+    }
+
+    if (snapshot.pageIndex !== currentActivePageIndex) {
+        currentActivePageIndex = snapshot.pageIndex;
+    }
+    
+    const page = globalPayload.pages[currentActivePageIndex];
+    const restoredBlocks = JSON.parse(JSON.stringify(snapshot.blocks || []));
+    page.blocks = restoredBlocks;
+    page.ai_cleaned_bg = !!snapshot.ai_cleaned_bg;
+    
+    const imageChanged = page.image_base64 !== snapshot.image_base64;
+    page.image_base64 = snapshot.image_base64;
+    
+    if (canvasScope) {
+        canvasScope.blocks = page.blocks;
+        if (imageChanged) {
+            await replaceCanvasBackground(page.image_base64);
+        } else {
+            repaintCanvas();
+        }
+    } else {
+        cycleViewEngine();
+    }
+    
+    currentTargetBlock = null;
+    selectedBlockIndices = [];
+    _hideFloatingToolbar();
+    _syncEraserToolbarState();
+    updateCleanBgButtonLabel();
+    _updateUndoRedoUI();
 }
 
 /**
  * Deshace el último cambio (Ctrl+Z).
  */
-function performUndo() {
-    if (undoStack.length === 0) {
-        console.log("No hay cambios para deshacer");
-        return;
+async function performUndo() {
+    if (undoStack.length === 0) return;
+    
+    const current = createSnapshot();
+    if (current) {
+        redoStack.push(current);
     }
     
-    // Guardar el estado actual en redo
-    const currentSnapshot = createSnapshot();
-    if (currentSnapshot) {
-        redoStack.push(currentSnapshot);
-    }
-    
-    // Restaurar el estado anterior
-    const previousSnapshot = undoStack.pop();
-    restoreSnapshot(previousSnapshot);
+    const prev = undoStack.pop();
+    await restoreSnapshot(prev);
 }
 
 /**
  * Rehace el último cambio deshecho (Ctrl+Y).
  */
-function performRedo() {
-    if (redoStack.length === 0) {
-        console.log("No hay cambios para rehacer");
-        return;
+async function performRedo() {
+    if (redoStack.length === 0) return;
+    
+    const current = createSnapshot();
+    if (current) {
+        undoStack.push(current);
     }
     
-    // Guardar el estado actual en undo
-    const currentSnapshot = createSnapshot();
-    if (currentSnapshot) {
-        undoStack.push(currentSnapshot);
-    }
-    
-    // Restaurar el estado siguiente
-    const nextSnapshot = redoStack.pop();
-    restoreSnapshot(nextSnapshot);
+    const next = redoStack.pop();
+    await restoreSnapshot(next);
 }
 
 /**
@@ -397,7 +500,19 @@ function resolveEditableFontSize(block) {
     const width = Math.max(1, x1 - x0);
     const height = Math.max(1, y1 - y0);
 
-    return block.font_size || calculateOptimalFontSize(block.text, width, height);
+    if (block.font_size_locked && block.font_size) {
+        return block.font_size;
+    }
+
+    const numLines = Math.max(1, (block.text || "").split("\n").filter(l => l.trim().length > 0).length);
+    const lineH = height / numLines;
+    const estimatedFromBox = Math.max(10, Math.min(180, Math.round(lineH * 0.72)));
+
+    if (block.font_size && block.font_size >= estimatedFromBox * 0.7 && block.font_size <= estimatedFromBox * 1.4) {
+        return block.font_size;
+    }
+
+    return estimatedFromBox;
 }
 
 // ─── Resize Handles ─────────────────────────────────────────────────────────
@@ -755,8 +870,8 @@ function _blockCssRect(canvas, block) {
     const [x0, y0, x1, y1] = block.bbox;
 
     return {
-        left: (canvasRect.left - wrapperRect.left) + (x0 * scaleX),
-        top: (canvasRect.top - wrapperRect.top) + (y0 * scaleY),
+        left: (canvasRect.left - wrapperRect.left + wrapper.scrollLeft) + (x0 * scaleX),
+        top: (canvasRect.top - wrapperRect.top + wrapper.scrollTop) + (y0 * scaleY),
         width: Math.max(20, (x1 - x0) * scaleX),
         height: Math.max(20, (y1 - y0) * scaleY),
         scaleY
@@ -825,13 +940,13 @@ function _bindEraserActions() {
             btnClean.disabled = true;
 
             try {
+                saveToUndoStack();
                 const payload = {
                     image_base64: currentPage.image_base64,
                     boxes: [{ bbox: currentTargetBlock.bbox }]
                 };
 
                 const data = await window.dbvApi.cleanBackground(payload, false);
-                saveToUndoStack();
                 currentPage.image_base64 = "data:image/png;base64," + data.image_base64;
                 currentPage.ai_cleaned_bg = true;
 
@@ -1234,6 +1349,9 @@ function initPagination(fullData) {
     console.log("[DBV DIAG] initPagination called with", fullData?.total_pages, "pages");
     globalPayload = fullData;
     currentActivePageIndex = 0;
+    undoStack = [];
+    redoStack = [];
+    _updateUndoRedoUI();
 
     globalPayload.pages.forEach(page => {
         page.blocks.forEach(block => normalizeBlock(block));
@@ -1452,10 +1570,10 @@ function initPagination(fullData) {
                         boxes: localBoxes
                     };
 
-                const data = await window.dbvApi.cleanBackground(payload, useCloud);
-
-                // Guardar rollback
+                // Guardar rollback ANTES de mutar
                 saveToUndoStack();
+
+                const data = await window.dbvApi.cleanBackground(payload, useCloud);
 
                 // Actualizar imagen y re-renderizar
                 currentPage.image_base64 = "data:image/png;base64," + data.image_base64;
@@ -1467,8 +1585,12 @@ function initPagination(fullData) {
                     block.bg_transparent = true;
                 });
 
-                cycleViewEngine();
-
+                if (canvasScope) {
+                    canvasScope.blocks = currentPage.blocks;
+                    await replaceCanvasBackground(currentPage.image_base64);
+                } else {
+                    cycleViewEngine();
+                }
             } catch (err) {
                 alert(_t("alerts.cleanBgError", { msg: err.message }));
             } finally {
@@ -1650,8 +1772,10 @@ function paintCanvasLayers(ctx, canvas, background, blocks) {
         const height = y1 - y0;
 
         if (block.is_eraser) {
-            drawNataEraser(ctx, block.bbox, block === currentTargetBlock);
-            drawResizeHandles(ctx, block.bbox);
+            if (!isPreviewMode) {
+                drawNataEraser(ctx, block.bbox, block === currentTargetBlock);
+                drawResizeHandles(ctx, block.bbox);
+            }
             return;
         }
 
@@ -1737,32 +1861,21 @@ function paintCanvasLayers(ctx, canvas, background, blocks) {
                 ctx.restore();
             }
             
-            // Borde verde OK + handles de redimensión
-            ctx.strokeStyle = "rgba(40, 167, 69, 0.9)";
-            ctx.lineWidth = 1;
-            ctx.strokeRect(x0, y0, width, height);
-            drawResizeHandles(ctx, block.bbox);
+            // En modo vista previa limpia no dibujamos bordes verdes ni tiradores
+            if (!isPreviewMode) {
+                ctx.strokeStyle = "rgba(40, 167, 69, 0.9)";
+                ctx.lineWidth = 1;
+                ctx.strokeRect(x0, y0, width, height);
+                drawResizeHandles(ctx, block.bbox);
+            }
         } else {
-            if (block.source === "native") {
+            if (isPreviewMode || block.source === "native") {
                 return;
             }
             // Guia inicial de deteccion: solo el recuadro.
-            //
-            // La etiqueta blanca con el texto reconocido se dibujaba en TODOS los
-            // bloques a 14px fijos. En una infografia densa (121 bloques, altura
-            // mediana de 12px) esas etiquetas cubrian el 28,7% de la pagina frente
-            // al 18,2% de las propias cajas: tapaban mas documento del que dejaban
-            // ver, y encima duplicaban un texto que ya esta legible en la imagen de
-            // debajo. El borde solo ya identifica la region detectada.
             ctx.strokeStyle = "rgba(49, 130, 206, 0.8)";
             ctx.lineWidth = 1;
             ctx.strokeRect(x0, y0, width, height);
-
-            // La etiqueta sobrevive donde si aporta: en el bloque seleccionado,
-            // para comprobar de un vistazo que el OCR leyo bien esa zona.
-            if (block === currentTargetBlock && !isInlineEditingBlock) {
-                _drawDetectionLabel(ctx, canvas, block, x0, y0, width, height);
-            }
 
             // Bloque no modificado pero seleccionado: mostrar handles para facilitar resize.
             if (_isResizeInteractiveBlock(block)) {
@@ -1773,6 +1886,8 @@ function paintCanvasLayers(ctx, canvas, background, blocks) {
             }
         }
     });
+
+    if (isPreviewMode) return;
 
     // ── Resaltado visual de multi-selección (segunda pasada, sobre todo lo demás) ──
     selectedBlockIndices.forEach((selIdx, order) => {
@@ -1844,11 +1959,12 @@ function replaceCanvasBackground(dataUrl) {
     });
 }
 
-function mountInteractionLayer(canvas, ctx, blocks) {
+function mountInteractionLayer(canvas, ctx, _initialBlocks) {
     let isDragging   = false;
     let isResizing   = false;
     let isMarqueeSelecting = false;
     let dragHasMoved = false;
+    let dragInitialSnapshot = null;
 
     let dragTargetIndex   = -1;
     let resizeTargetIndex = -1;
@@ -1862,6 +1978,10 @@ function mountInteractionLayer(canvas, ctx, blocks) {
 
     const MIN_BLOCK = 20; // tamaño mínimo en px al redimensionar
 
+    function getActiveBlocks() {
+        return canvasScope?.blocks || globalPayload?.pages?.[currentActivePageIndex]?.blocks || [];
+    }
+
     function getPhysicalCoords(evt) {
         const rect = canvas.getBoundingClientRect();
         return {
@@ -1871,6 +1991,7 @@ function mountInteractionLayer(canvas, ctx, blocks) {
     }
 
     function _findTopmostBlockIndex(predicate) {
+        const blocks = getActiveBlocks();
         for (let i = blocks.length - 1; i >= 0; i--) {
             if (predicate(blocks[i], i, blocks)) return i;
         }
@@ -1879,6 +2000,11 @@ function mountInteractionLayer(canvas, ctx, blocks) {
 
     canvas.addEventListener("dblclick", (evt) => {
         if (evt.button !== 0) return;
+        if (isPreviewMode) {
+            togglePreviewMode(false);
+            return;
+        }
+        const blocks = getActiveBlocks();
         const physical = getPhysicalCoords(evt);
         const clickedIdx = _findTopmostBlockIndex(block => {
             const [x0, y0, x1, y1] = block.bbox;
@@ -1892,12 +2018,19 @@ function mountInteractionLayer(canvas, ctx, blocks) {
     canvas.addEventListener("mousedown", (evt) => {
         if (evt.button !== 0) return;
 
+        if (isPreviewMode) {
+            togglePreviewMode(false);
+            return;
+        }
+
         if (inlineEditorSession) {
             _closeInlineEditor(true);
         }
 
+        const blocks = getActiveBlocks();
         const physical = getPhysicalCoords(evt);
         dragHasMoved = false;
+        dragInitialSnapshot = null;
 
         // ── Ctrl+Click: modo multi-selección ──
         if (evt.ctrlKey) {
@@ -1934,6 +2067,7 @@ function mountInteractionLayer(canvas, ctx, blocks) {
             if (!_isResizeInteractiveBlock(blocks[i])) continue;
             const h = getResizeHandle(physical, blocks[i]);
             if (h) {
+                dragInitialSnapshot = createSnapshot();
                 isResizing        = true;
                 resizeHandle      = h;
                 resizeTargetIndex = i;
@@ -1958,6 +2092,7 @@ function mountInteractionLayer(canvas, ctx, blocks) {
                 return;
             }
 
+            dragInitialSnapshot = createSnapshot();
             isDragging  = true;
             dragOffsetX = physical.x - block.bbox[0];
             dragOffsetY = physical.y - block.bbox[1];
@@ -1974,6 +2109,12 @@ function mountInteractionLayer(canvas, ctx, blocks) {
     });
 
     canvas.addEventListener("mousemove", (evt) => {
+        if (isPreviewMode) {
+            canvas.style.cursor = "default";
+            return;
+        }
+
+        const blocks = getActiveBlocks();
         const physical = getPhysicalCoords(evt);
 
         if (isMarqueeSelecting) {
@@ -1994,12 +2135,31 @@ function mountInteractionLayer(canvas, ctx, blocks) {
             dragHasMoved = true;
             _hideFloatingToolbar();
             const block = blocks[resizeTargetIndex];
+            if (!block) return;
             let [x0, y0, x1, y1] = block.bbox;
 
-            if (resizeHandle.includes('e')) x1 = Math.max(x0 + MIN_BLOCK, physical.x);
-            if (resizeHandle.includes('w')) x0 = Math.min(x1 - MIN_BLOCK, physical.x);
-            if (resizeHandle.includes('s')) y1 = Math.max(y0 + MIN_BLOCK, physical.y);
-            if (resizeHandle.includes('n')) y0 = Math.min(y1 - MIN_BLOCK, physical.y);
+            switch (resizeHandle) {
+                case "e":  x1 = Math.max(x0 + MIN_BLOCK, physical.x); break;
+                case "w":  x0 = Math.min(x1 - MIN_BLOCK, physical.x); break;
+                case "s":  y1 = Math.max(y0 + MIN_BLOCK, physical.y); break;
+                case "n":  y0 = Math.min(y1 - MIN_BLOCK, physical.y); break;
+                case "se":
+                    x1 = Math.max(x0 + MIN_BLOCK, physical.x);
+                    y1 = Math.max(y0 + MIN_BLOCK, physical.y);
+                    break;
+                case "sw":
+                    x0 = Math.min(x1 - MIN_BLOCK, physical.x);
+                    y1 = Math.max(y0 + MIN_BLOCK, physical.y);
+                    break;
+                case "ne":
+                    x1 = Math.max(x0 + MIN_BLOCK, physical.x);
+                    y0 = Math.min(y1 - MIN_BLOCK, physical.y);
+                    break;
+                case "nw":
+                    x0 = Math.min(x1 - MIN_BLOCK, physical.x);
+                    y0 = Math.min(y1 - MIN_BLOCK, physical.y);
+                    break;
+            }
 
             block.bbox = [x0, y0, x1, y1];
             block.is_modified = true;
@@ -2007,12 +2167,13 @@ function mountInteractionLayer(canvas, ctx, blocks) {
             return;
         }
 
-        // ── Desplazando bloque ──
+        // ── Arrastrando bloque ──
         if (isDragging && dragTargetIndex !== -1) {
             dragHasMoved = true;
             _hideFloatingToolbar();
 
             const block = blocks[dragTargetIndex];
+            if (!block) return;
             const w = block.bbox[2] - block.bbox[0];
             const h = block.bbox[3] - block.bbox[1];
             const newX0 = physical.x - dragOffsetX;
@@ -2040,6 +2201,8 @@ function mountInteractionLayer(canvas, ctx, blocks) {
     });
 
     canvas.addEventListener("mouseup", (evt) => {
+        const blocks = getActiveBlocks();
+
         if (isMarqueeSelecting) {
             isMarqueeSelecting = false;
             const marquee = selectionMarquee;
@@ -2072,7 +2235,13 @@ function mountInteractionLayer(canvas, ctx, blocks) {
             isResizing        = false;
             resizeHandle      = null;
             resizeTargetIndex = -1;
-            saveToUndoStack(); // Guardar cambio de tamaño
+            if (dragHasMoved && dragInitialSnapshot) {
+                undoStack.push(dragInitialSnapshot);
+                if (undoStack.length > MAX_UNDO_SIZE) undoStack.shift();
+                redoStack = [];
+                _updateUndoRedoUI();
+            }
+            dragInitialSnapshot = null;
             return;
         }
 
@@ -2081,7 +2250,13 @@ function mountInteractionLayer(canvas, ctx, blocks) {
             isDragging       = false;
             dragTargetIndex  = -1;
             clickTargetIndex = -1;
-            saveToUndoStack(); // Guardar cambio de posición
+            if (dragInitialSnapshot) {
+                undoStack.push(dragInitialSnapshot);
+                if (undoStack.length > MAX_UNDO_SIZE) undoStack.shift();
+                redoStack = [];
+                _updateUndoRedoUI();
+            }
+            dragInitialSnapshot = null;
             return;
         }
 
@@ -2090,11 +2265,25 @@ function mountInteractionLayer(canvas, ctx, blocks) {
             currentTargetBlock = blocks[clickTargetIndex] || null;
             document.getElementById("floating-toolbar").hidden = true;
             startInlineBlockEdit(blocks, clickTargetIndex, canvasScope);
+            clickTargetIndex = -1;
+            isDragging = false;
+            dragInitialSnapshot = null;
+            return;
         }
+
+        // Clic en el vacío: limpiar selección
+        currentTargetBlock = null;
+        selectedBlockIndices = [];
+        document.getElementById("floating-toolbar").hidden = true;
+        document.getElementById("multi-toolbar").hidden = true;
+        updateCleanBgButtonLabel();
+        _syncEraserToolbarState();
+        repaintCanvas();
 
         isDragging       = false;
         dragTargetIndex  = -1;
         clickTargetIndex = -1;
+        dragInitialSnapshot = null;
     });
 
     canvas.addEventListener("mouseleave", () => {
@@ -2484,6 +2673,25 @@ function mountExportControls(fullPayload) {
         });
     }
 
+    const chkAllEditable = document.getElementById("chk-export-all-editable");
+    const warningNote = document.getElementById("export-all-warning-note");
+
+    if (chkAllEditable) {
+        chkAllEditable.checked = false;
+        chkAllEditable.onchange = () => {
+            const _t = (k, v) => window.DBV_I18N ? window.DBV_I18N.t(k, v) : k;
+            if (chkAllEditable.checked) {
+                const confirmed = window.confirm(_t("export.allEditableConfirm"));
+                if (!confirmed) {
+                    chkAllEditable.checked = false;
+                }
+            }
+            if (warningNote) {
+                warningNote.hidden = !chkAllEditable.checked;
+            }
+        };
+    }
+
     const savedTargets = loadExportTargetsPreference();
     exportPdfInput.checked = !!savedTargets.pdf;
     exportPptxInput.checked = !!savedTargets.pptx;
@@ -2524,10 +2732,7 @@ function mountExportControls(fullPayload) {
         _setBtnLabel(btnExport, _t("export.generating", { labels: selectedLabels }));
         btnExport.disabled = true;
         
-        const exportModeSelect = document.getElementById("export-mode-select");
-        if (exportModeSelect) {
-            fullPayload.export_mode = exportModeSelect.value;
-        }
+        fullPayload.export_mode = (chkAllEditable && chkAllEditable.checked) ? "all_editable" : "only_modified";
         fullPayload.export_targets = {
             pdf: exportPdf,
             pptx: exportPptx,
@@ -2595,6 +2800,12 @@ function mountKeyboardShortcuts() {
             performRedo();
         }
 
+        // P: Alternar modo vista previa limpia (excepto mientras se escribe)
+        if (!isCtrl && !e.altKey && !isTypingContext && (e.key === "p" || e.key === "P")) {
+            e.preventDefault();
+            togglePreviewMode();
+        }
+
         // Supr/Delete: eliminar bloque activo o multiselección (excepto mientras se escribe)
         if (!isCtrl && !isTypingContext && e.key === "Delete") {
             const removed = deleteActiveBlocks();
@@ -2607,12 +2818,22 @@ function mountKeyboardShortcuts() {
     // Binding visual de botones UI
     const btnUndo = document.getElementById("btn-undo");
     const btnRedo = document.getElementById("btn-redo");
+    const btnPreview = document.getElementById("btn-preview-mode");
+    const floatingBadge = document.getElementById("preview-floating-badge");
+
     if (btnUndo) btnUndo.onclick = performUndo;
     if (btnRedo) btnRedo.onclick = performRedo;
+    if (btnPreview) btnPreview.onclick = () => togglePreviewMode();
+    if (floatingBadge) floatingBadge.onclick = () => togglePreviewMode(false);
 }
 
 window.dbvCanvasEngine = {
     initPagination,
-    mountKeyboardShortcuts
+    mountKeyboardShortcuts,
+    togglePreviewMode,
+    performUndo,
+    performRedo,
+    saveToUndoStack,
+    get isPreviewMode() { return isPreviewMode; }
 };
 })();

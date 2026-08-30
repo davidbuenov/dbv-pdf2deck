@@ -260,6 +260,7 @@ def _reportlab_image_overlay(page_data: dict, page_width: float, page_height: fl
             anchor="sw",
         )
     _draw_reportlab_blocks(canvas, page_data, page_width, page_height)
+    canvas.showPage()
     canvas.save()
     return buffer.getvalue()
 
@@ -273,8 +274,10 @@ def _build_pdf_export_reportlab(payload: dict) -> bytes:
         page_width = float(page_data.get("page_width_pt") or image.width)
         page_height = float(page_data.get("page_height_pt") or image.height)
         page_data = {**page_data, "_export_mode": payload.get("export_mode", "only_modified")}
-        overlay = PdfReader(io.BytesIO(_reportlab_image_overlay(page_data, page_width, page_height, True)))
-        writer.add_page(overlay.pages[0])
+        overlay_bytes = _reportlab_image_overlay(page_data, page_width, page_height, True)
+        overlay = PdfReader(io.BytesIO(overlay_bytes))
+        if overlay.pages:
+            writer.add_page(overlay.pages[0])
     _reportlab_signature(writer)
     output = io.BytesIO()
     writer.write(output)
@@ -284,22 +287,33 @@ def _build_pdf_export_reportlab(payload: dict) -> bytes:
 def _build_pdf_export_from_original_reportlab(payload: dict, source_pdf_path: Path) -> bytes:
     reader = PdfReader(str(source_pdf_path))
     writer = PdfWriter()
+    export_mode = payload.get("export_mode", "only_modified")
     pages_by_number = {
-        int(page.get("page_num", 0)): {**page, "_export_mode": payload.get("export_mode", "only_modified")}
+        int(page.get("page_num", 0)): {**page, "_export_mode": export_mode}
         for page in payload.get("pages", [])
     }
     for page_number, source_page in enumerate(reader.pages):
         page_data = pages_by_number.get(page_number)
         if page_data is not None and page_data.get("blocks"):
+            has_modifications = any(bool(b.get("is_modified")) for b in page_data.get("blocks", []))
+            has_cleaned_bg = bool(page_data.get("ai_cleaned_bg"))
+
+            # Si no hay modificaciones ni fondo IA nuevo, preservamos la página intacta
+            if export_mode == "only_modified" and not has_modifications and not has_cleaned_bg:
+                writer.add_page(source_page)
+                continue
+
             page_width = float(source_page.mediabox.width)
             page_height = float(source_page.mediabox.height)
             overlay_bytes = _reportlab_image_overlay(
                 page_data,
                 page_width,
                 page_height,
-                bool(page_data.get("ai_cleaned_bg")),
+                has_cleaned_bg,
             )
-            source_page.merge_page(PdfReader(io.BytesIO(overlay_bytes)).pages[0])
+            overlay_reader = PdfReader(io.BytesIO(overlay_bytes))
+            if overlay_reader.pages:
+                source_page.merge_page(overlay_reader.pages[0])
         writer.add_page(source_page)
     _reportlab_signature(writer)
     output = io.BytesIO()

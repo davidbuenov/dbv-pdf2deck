@@ -56,6 +56,9 @@
             <span class="bar-sep"></span>
             <button id="btn-clean-bg" class="bar-btn labeled" data-needs-doc disabled
                     data-i18n-title="toolbar.cleanBgTitle" title="Limpia el fondo de todos los cuadros de la página actual"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.7 6.7 8a7.5 7.5 0 1 0 10.6 0z"></path></svg><span class="btn-txt" data-i18n="toolbar.cleanBg">Limpiar Fondo</span></button>
+            <span class="bar-sep"></span>
+            <button id="btn-preview-mode" class="bar-btn labeled preview-btn" data-needs-doc disabled
+                    data-i18n-title="toolbar.previewTitle" title="Ver el documento limpio sin guías de edición (P)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg><span class="btn-txt" data-i18n="toolbar.preview">Vista previa</span></button>
         </div>
 
         <div class="bar-group">
@@ -65,10 +68,17 @@
                         data-i18n-title="toolbar.exportMenuTitle" title="Elegir formatos y descargar"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 11l5 5 5-5M4 20h16"></path></svg><span class="btn-txt" data-i18n="toolbar.exportMenu">Exportar</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
                 <div id="export-menu" class="popover" role="menu" hidden>
                     <p class="popover-label" data-i18n="export.title">Qué se exporta</p>
-                    <select id="export-mode-select" title="Modo de exportación">
-                        <option value="only_modified" data-i18n="export.onlyModified">Solo los bloques modificados</option>
-                        <option value="all_editable" data-i18n="export.allEditable">Todo el documento editable</option>
-                    </select>
+                    <div class="export-mode-wrap">
+                        <div class="export-mode-default-badge">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                            <span data-i18n="export.onlyModified">Solo bloques modificados (Recomendado)</span>
+                        </div>
+                        <label class="export-adv-chk-label">
+                            <input type="checkbox" id="chk-export-all-editable">
+                            <span data-i18n="export.allEditableChk">Exportar todo el texto editable (Desaconsejado)</span>
+                        </label>
+                        <small id="export-all-warning-note" class="export-warning-note" hidden data-i18n="export.allEditableWarning">⚠️ Reconstruye todo el texto con OCR. Puede superponer textos sobre el fondo si no se limpiaron antes.</small>
+                    </div>
                     <div class="popover-sep"></div>
                     <p class="popover-label" data-i18n="export.formats">Formatos</p>
                     <div class="format-list">
@@ -133,6 +143,11 @@
             <div id="canvas-container">
                 <div id="canvas-wrapper">
                     <canvas id="pdf-canvas">El navegador no soporta HTML5 Canvas :(</canvas>
+                </div>
+
+                <div id="preview-floating-badge" class="preview-floating-badge" hidden role="status" aria-live="polite">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    <span data-i18n="preview.badgeText">Modo Vista Previa · Clic o P para editar</span>
                 </div>
 
                 <div class="canvas-overlays">

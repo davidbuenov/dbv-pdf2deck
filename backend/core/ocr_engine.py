@@ -58,22 +58,23 @@ class OCRBlock:
 # Solape vertical minimo (fraccion de la altura menor) para considerar que dos
 # fragmentos comparten linea.
 LINE_MIN_VERTICAL_OVERLAP = 0.5
-# Hueco horizontal maximo entre fragmentos de una misma linea. Un espacio entre
-# palabras ronda 0.3x la altura; una separacion entre columnas la supera.
-LINE_MAX_GAP_FACTOR = 0.8
+# Hueco horizontal maximo entre fragmentos de una misma linea. Un espacio tipografico
+# entre palabras ronda 0.25-0.35x la altura; 0.40x evita saltar a columnas contiguas
+# o paneles adyacentes en infografias y tablas.
+LINE_MAX_GAP_FACTOR = 0.40
 # Dos fragmentos con alturas muy dispares no son la misma linea (un titular y
 # una nota al pie que casualmente se rozan).
-LINE_MAX_HEIGHT_RATIO = 2.0
+LINE_MAX_HEIGHT_RATIO = 1.8
 
 # Hueco vertical maximo entre lineas del mismo parrafo, en alturas de linea.
-PARAGRAPH_MAX_GAP_FACTOR = 0.9
+PARAGRAPH_MAX_GAP_FACTOR = 0.85
 # Un titular y su cuerpo tienen cuerpos distintos: no deben fusionarse.
-PARAGRAPH_MAX_HEIGHT_RATIO = 1.3
+PARAGRAPH_MAX_HEIGHT_RATIO = 1.25
 # Solape horizontal minimo entre lineas consecutivas. Es lo que impide fundir
 # dos columnas contiguas en un unico parrafo imposible.
-PARAGRAPH_MIN_X_OVERLAP = 0.35
+PARAGRAPH_MIN_X_OVERLAP = 0.50
 # Desalineacion lateral admitida (sangrias, texto centrado), en anchos de linea.
-PARAGRAPH_MAX_MISALIGNMENT = 0.25
+PARAGRAPH_MAX_MISALIGNMENT = 0.15
 
 
 @dataclass(slots=True)
@@ -165,8 +166,19 @@ def _same_line(line: _TextGroup, fragment: _TextGroup) -> bool:
     if max(line.line_height, fragment.line_height) / shorter > LINE_MAX_HEIGHT_RATIO:
         return False
 
-    # Hueco contra el borde ya alcanzado por la linea; negativo si se solapan.
-    return fragment.x0 - line.x1 <= LINE_MAX_GAP_FACTOR * line.line_height
+    max_gap = LINE_MAX_GAP_FACTOR * shorter
+
+    # Fragmento a la derecha de la linea abierta
+    if fragment.x0 >= line.x1:
+        return (fragment.x0 - line.x1) <= max_gap
+
+    # Fragmento a la izquierda de la linea abierta
+    if fragment.x1 <= line.x0:
+        return (line.x0 - fragment.x1) <= max_gap
+
+    # Solape horizontal entre cajas: solo tolerar leve desajuste tipografico
+    overlap_x = min(line.x1, fragment.x1) - max(line.x0, fragment.x0)
+    return overlap_x <= 0.35 * shorter
 
 
 def _merge_into_lines(fragments: list[_TextGroup]) -> list[_TextGroup]:
@@ -198,21 +210,21 @@ def _same_paragraph(previous: _TextGroup, candidate: _TextGroup) -> bool:
     if max(previous.line_height, candidate.line_height) / shorter > PARAGRAPH_MAX_HEIGHT_RATIO:
         return False
 
+    # Disparidad de ancho: una linea muy ancha (ej. pie, titulo o banner)
+    # no debe absorber una columna estrecha adyacente.
+    width_ratio = max(previous.width, candidate.width) / max(1.0, min(previous.width, candidate.width))
+    if width_ratio > 2.0:
+        return False
+
     # Columnas contiguas: se rozan en vertical pero apenas comparten eje X.
     x_overlap = min(previous.x1, candidate.x1) - max(previous.x0, candidate.x0)
     if x_overlap < PARAGRAPH_MIN_X_OVERLAP * min(previous.width, candidate.width):
         return False
 
     # Alineado por la izquierda (parrafo corriente) o por el centro (titulares).
-    #
-    # La tolerancia se escala con la linea MAS ESTRECHA, no con la mas ancha:
-    # con la ancha, un fragmento de dos palabras encajaba en cualquier titular
-    # largo por pura holgura, y asi acababa la coletilla "integrar is" pegada al
-    # subtitulo del que ni siquiera formaba parte. El suelo de dos alturas de
-    # linea cubre la sangria tipica de un parrafo de verdad.
     tolerance = max(
         PARAGRAPH_MAX_MISALIGNMENT * min(previous.width, candidate.width),
-        2.0 * reference,
+        1.2 * reference,
     )
     aligned_left = abs(candidate.x0 - previous.x0) <= tolerance
     aligned_center = abs(
