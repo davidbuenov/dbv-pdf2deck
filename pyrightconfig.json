@@ -2,11 +2,18 @@
   "venvPath": "backend",
   "venv": "venv",
   "extraPaths": [
-    "backend"
+    "backend",
+    "backend/core",
+    "backend/api"
   ],
   "executionEnvironments": [
     {
-      "root": "backend"
+      "root": "backend",
+      "extraPaths": [
+        ".",
+        "core",
+        "api"
+      ]
     }
   ]
 }

@@ -216,18 +216,50 @@ window.addEventListener("keydown", (e) => {
     }
 });
 
+let lastHealthInfo = null;
+
+async function checkAndRecordHealth() {
+    try {
+        const health = await window.dbvApi.checkHealth();
+        if (health && health.status === "running") {
+            lastHealthInfo = health;
+            window.dbvShell?.setEngineStatus(true, health);
+            return health;
+        }
+    } catch (_) {
+        // En espera
+    }
+    lastHealthInfo = null;
+    window.dbvShell?.setEngineStatus(false);
+    return null;
+}
+
+async function waitForBackendReady(maxWaitMs = 35000) {
+    const start = Date.now();
+    let notifiedWaiting = false;
+
+    while (Date.now() - start < maxWaitMs) {
+        const health = await checkAndRecordHealth();
+        if (health && health.ocr_ready !== false) {
+            return health;
+        }
+        if (!notifiedWaiting) {
+            notifiedWaiting = true;
+            const isEn = window.DBV_I18N?.getLang?.() === "en";
+            terminalPrint(isEn
+                ? "⏳ Waiting for local OCR engine to finish initializing..."
+                : "⏳ Esperando a que el motor OCR termine de inicializarse...");
+        }
+        await new Promise(r => setTimeout(r, 600));
+    }
+    throw new Error("El motor OCR no respondió a tiempo durante el arranque. Por favor, reintenta.");
+}
+
 /**
  * Transporta el archivo binario al Backend REST y orquesta la respuesta reactiva al Canvas.
  * @param {File} pdfBlob El archivo del usuario.
  */
 async function ingestPdfAndTriggerOcr(pdfBlob) {
-    const clientDocId = (window.crypto && window.crypto.randomUUID)
-        ? window.crypto.randomUUID()
-        : `doc-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-
-    // Abrir SSE ANTES del POST para ver progreso en tiempo real desde la primera página.
-    await connectToServerLogs(clientDocId);
-
     const uploadPanel = document.getElementById("upload-panel");
     const workspaceGate = document.getElementById("editor-workspace");
     if (uploadPanel) uploadPanel.hidden = false;
@@ -236,6 +268,27 @@ async function ingestPdfAndTriggerOcr(pdfBlob) {
 
     const sizeMb = (pdfBlob.size / 1024 / 1024).toFixed(2);
     terminalPrint(_t('terminal.uplink', { name: pdfBlob.name, size: sizeMb }));
+
+    // Asegurar que el backend y el modelo OCR estén 100% listos antes de enviar el archivo
+    try {
+        const health = await waitForBackendReady();
+        const modeLabel = health?.ocr_label ? ` (${health.ocr_label})` : "";
+        const isEn = window.DBV_I18N?.getLang?.() === "en";
+        terminalPrint(isEn
+            ? `✓ Local OCR engine ready${modeLabel}. Starting analysis...`
+            : `✓ Motor OCR local listo${modeLabel}. Iniciando análisis...`);
+    } catch (waitErr) {
+        terminalPrint(_t('terminal.abort', { msg: waitErr.message }));
+        return;
+    }
+
+    const clientDocId = (window.crypto && window.crypto.randomUUID)
+        ? window.crypto.randomUUID()
+        : `doc-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+
+    // Abrir SSE ANTES del POST para ver progreso en tiempo real desde la primera página.
+    await connectToServerLogs(clientDocId);
+
     terminalPrint(_t('terminal.waitingOcr'));
     startIngestHeartbeat();
 
@@ -277,22 +330,18 @@ async function startBackendHealthMonitor() {
     const maxFastAttempts = 40;
 
     async function poll() {
-        try {
-            const health = await window.dbvApi.checkHealth();
-            if (health && health.status === "running") {
-                if (!connected) {
-                    connected = true;
-                    const isEn = window.DBV_I18N?.getLang?.() === "en";
-                    terminalPrint(isEn
-                        ? "✓ Local OCR backend connected."
-                        : "✓ Motor OCR local conectado y listo.");
-                    window.dbvShell?.setEngineStatus(true);
-                }
-                setTimeout(poll, 10000);
-                return;
+        const health = await checkAndRecordHealth();
+        if (health) {
+            if (!connected) {
+                connected = true;
+                const isEn = window.DBV_I18N?.getLang?.() === "en";
+                const modeLabel = health.ocr_label ? ` [${health.ocr_label}]` : "";
+                terminalPrint(isEn
+                    ? `✓ Local OCR backend connected${modeLabel}.`
+                    : `✓ Motor OCR local conectado y listo${modeLabel}.`);
             }
-        } catch (_) {
-            // Continúa en espera
+            setTimeout(poll, 10000);
+            return;
         }
 
         attempts++;

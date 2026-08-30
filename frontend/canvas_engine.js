@@ -504,15 +504,13 @@ function resolveEditableFontSize(block) {
         return block.font_size;
     }
 
-    const numLines = Math.max(1, (block.text || "").split("\n").filter(l => l.trim().length > 0).length);
-    const lineH = height / numLines;
-    const estimatedFromBox = Math.max(10, Math.min(180, Math.round(lineH * 0.72)));
-
-    if (block.font_size && block.font_size >= estimatedFromBox * 0.7 && block.font_size <= estimatedFromBox * 1.4) {
+    if (block.font_size && block.font_size >= 8) {
         return block.font_size;
     }
 
-    return estimatedFromBox;
+    const numLines = Math.max(1, (block.text || "").split("\n").filter(l => l.trim().length > 0).length);
+    const lineH = height / numLines;
+    return Math.max(8, Math.min(400, Math.round(lineH * 0.78)));
 }
 
 // ─── Resize Handles ─────────────────────────────────────────────────────────
@@ -888,7 +886,8 @@ function _positionInlineEditor() {
     editor.style.top = `${rect.top}px`;
     editor.style.width = `${rect.width}px`;
     editor.style.height = `${rect.height}px`;
-    editor.style.fontSize = `${Math.max(8, (block.font_size || 16) * rect.scaleY)}px`;
+    const effFontSize = resolveEditableFontSize(block);
+    editor.style.fontSize = `${Math.max(8, effFontSize * rect.scaleY)}px`;
 
     const toolbar = _inlineToolbarElement();
     if (toolbar && !toolbar.hidden && !inlineToolbarMoved) {
@@ -1031,7 +1030,8 @@ function _syncInlineToolbarFromBlock(block) {
         }
         font.value = block.font_family || "system-ui";
     }
-    if (size) size.value = `${block.font_size || 16}`;
+    const currentSize = resolveEditableFontSize(block);
+    if (size) size.value = `${Math.round(currentSize)}`;
     if (lineSpacing) lineSpacing.value = `${Math.max(0.8, Math.min(3.0, Number(block.line_spacing) || TEXT_LINE_HEIGHT_MULTIPLIER))}`;
     if (width) width.value = `${Math.round(Math.max(20, block.bbox[2] - block.bbox[0]))}`;
     if (height) height.value = `${Math.round(Math.max(20, block.bbox[3] - block.bbox[1]))}`;
@@ -1791,8 +1791,7 @@ function paintCanvasLayers(ctx, canvas, background, blocks) {
             if (!isInlineEditingBlock) {
                 // Texto mutado de custom formatting
                 ctx.fillStyle = block.text_color || "#000000"; 
-                const calcDynamicSize = calculateOptimalFontSize(block.text, width, height); 
-                const finalSize = resolveEditableFontSize(block) || block.font_size || calcDynamicSize;
+                const finalSize = resolveEditableFontSize(block); 
                 const finalFont = block.font_family || "system-ui";
                 
                 // Respetar negrita e itálica del bloque (no forzar bold siempre)

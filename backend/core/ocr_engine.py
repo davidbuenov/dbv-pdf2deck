@@ -318,12 +318,12 @@ def _estimate_font_size_from_bbox(
         line_height (float | None): Altura de línea representativa en píxeles.
 
     Returns:
-        float: Cuerpo estimado, acotado a [10, 96].
+        float: Cuerpo estimado, acotado a [8, 400].
     """
     _, y0, _, y1 = bbox
     h = float(line_height) if line_height else max(1.0, float(y1 - y0))
-    # Heurística: en bloques OCR el alto incluye asc/desc + margen; reducimos para que encaje
-    return max(10.0, min(96.0, max(1.0, h) * 0.76))
+    # Heurística tipográfica: el cuerpo de fuente ocupa ~78% de la altura de línea OCR
+    return max(8.0, min(400.0, max(1.0, h) * 0.78))
 
 
 def _estimate_bold_from_region(
@@ -367,6 +367,20 @@ def _infer_block_style(
     return txt_hex, bg_hex, font_size, font_family, is_bold
 
 
+def get_ocr_device_info() -> dict[str, str]:
+    """
+    Identifica si EasyOCR dispone de aceleración por GPU (CUDA) o corre en CPU.
+    """
+    try:
+        import torch
+        if torch.cuda.is_available():
+            name = torch.cuda.get_device_name(0) if torch.cuda.device_count() > 0 else "CUDA GPU"
+            return {"device": "gpu", "label": "Turbo GPU", "name": str(name)}
+    except Exception:
+        pass
+    return {"device": "cpu", "label": "CPU", "name": "CPU"}
+
+
 def _get_reader():
     """
     Retorna la instancia singleton validada del modelo EasyOCR, instanciándolo asilado.
@@ -384,8 +398,8 @@ def _get_reader():
 
     if _reader is None:
         # Detección dinámica de aceleración por hardware (CUDA)
-        import torch
-        gpu_ready = torch.cuda.is_available()
+        info = get_ocr_device_info()
+        gpu_ready = (info["device"] == "gpu")
         _reader = easyocr.Reader(['es', 'en'], gpu=gpu_ready, verbose=False)
     
     return _reader

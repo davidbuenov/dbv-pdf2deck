@@ -24,9 +24,15 @@
     ejercitar todavía**: faltan los secretos en GitHub y un tag de prueba.
   - **Corrección de Canvas en Blanco / ReferenceError `bindDualPage` y dimensiones `safeCanvas` (2026-08-29)**: Se eliminó el error tipográfico `bindDualPage` en `canvas_engine.js` que abortaba la inicialización de paginación antes de pintar el lienzo, y se asignaron dimensiones explícitas al clon del canvas para respetar el tamaño natural de la imagen en lugar del default de 300×150 px.
   - **Internacionalización ES/EN implementada (2026-08-29)**: Creado `frontend/i18n.js` con el patrón probado de `dbv-md-reader` (Vanilla JS + IIFE + `data-i18n` + `window.DBV_I18N`), selector de idioma `EN | ES` en la barra superior y persistencia en `localStorage`.
-  - **Corrección de Sincronización de Punteros en Deshacer y Escalado de Fuentes de Título (2026-08-30)**:
-    - *Causa*: `restoreSnapshot` creaba una nueva referencia de array para `page.blocks`, pero los event listeners de `mountInteractionLayer` en el canvas mantenían capturada en su closure la referencia antigua del array de bloques. Al editar un bloque tras hacer Undo, se modificaba el objeto huérfano del array anterior y el canvas (que leía el nuevo array) no reflejaba ningún cambio hasta cambiar de página.
-    - *Solución*: Se refactorizó `mountInteractionLayer` para consultar dinámicamente `getActiveBlocks()` en tiempo de ejecución en lugar de cerrar sobre el parámetro inicial. Se cerró cualquier sesión inline activa al restaurar y se mejoró `resolveEditableFontSize` para estimar el tamaño proporcional a la altura de la caja contenedora cuando el bloque no tiene fuente bloqueada.
+  - **Simplificación de Barra Superior, Espera Resiliente de Arranque OCR y Modo GPU/CPU (2026-08-30)**:
+    - *Barra superior*: Se eliminó el texto redundante `DBV PDF2Deck` y el botón superfluo `Abrir` para dejar un espacio limpio y despejado. Se blindó el layout con `flex-shrink: 0` y espaciados dinámicos para evitar que *"Vista previa"* y *"Exportar"* puedan solaparse jamás.
+    - *Espera resiliente de arranque OCR*: Ahora el usuario puede arrastrar o abrir documentos en el segundo cero sin bloqueos ni errores `Failed to fetch`. El cliente espera automáticamente con `waitForBackendReady()` a que el servidor termine de inicializar el modelo OCR antes de lanzar el análisis, informando en la consola en tiempo real.
+    - *Telemetría de Aceleración*: El endpoint `/health` y la barra de estado inferior ahora detectan e informan explícitamente si el motor OCR está operando en `Modo Turbo GPU` (aceleración CUDA) o `Modo CPU`.
+  - **Corrección de Sincronización de Punteros en Deshacer y Calibración WYSIWYG de Fuentes OCR (2026-08-30)**:
+    - *Causa del desajuste visual de fuentes*: En el backend (`ocr_engine.py`), la función `_estimate_font_size_from_bbox` tenía un tope artificial fijo de `min(96.0, ...)`. En títulos grandes escaneados a 200 DPI con altura de línea de ~276px, el cálculo tipográfico real (~215px) quedaba capado a 96px, que al trasladarse al espacio del lienzo a 100 DPI (`scale = 0.50`) se convertía en apenas `48.012 px`. Al abrir el editor inline, el input mostraba `48`, el editor se renderizaba a la mitad del tamaño visual original y, si el usuario subía un punto a `49`, el texto se bloqueaba a ese tamaño diminuto, encogiéndose en el lienzo final.
+    - *Solución*:
+      1. Se eliminó el tope artificial de 96px en `_estimate_font_size_from_bbox` elevando el rango admitido hasta 400px (soporte de tipografías de gran formato, carteles y títulos destacados). Para *"El Director de IA"*, el backend ahora calcula `font_size = 107.67 px` (78% de la altura de la caja de 138px).
+      2. Se unificó `resolveEditableFontSize` en `frontend/canvas_engine.js` para usar el mismo tamaño visual exacto en el editor inline (`_positionInlineEditor`), en el input numérico (`_syncInlineToolbarFromBlock` redondeado) y en el renderizado del lienzo (`paintCanvasLayers`). Ahora el tamaño original, el tamaño de edición inline y el resultado tras editar coinciden de forma 100% WYSIWYG.
   - **Protección y Guía de Exportación (Modo Avanzado Desaconsejado con Confirmación) (2026-08-30)**:
     - Se fijó como estándar activo por defecto `Solo bloques modificados (Recomendado)` para garantizar máxima nitidez y fidelidad original pixel-perfect.
     - La opción `all_editable` se transformó en un checkbox opt-in claramente etiquetado como `Exportar todo el texto editable (Desaconsejado)`. Al marcarlo, se despliega un diálogo modal de confirmación advirtiendo del riesgo de solapamiento OCR y se muestra una nota visual ámbar de aviso en el menú.
@@ -44,8 +50,14 @@
     2. *Posicionamiento de Edición con Scroll*: Corregido `_blockCssRect` en `frontend/canvas_engine.js` sumando `wrapper.scrollTop` y `wrapper.scrollLeft`, eliminando el desfase donde el editor `#inline-block-editor` saltaba a la parte superior de la ventana al editar bloques con scroll vertical activo.
     3. *UI Canvas*: Eliminada la franja superior oscura invasiva `_drawDetectionLabel` al seleccionar bloques en `frontend/canvas_engine.js`.
   - **Flujo Nuevo / Abrir Documento (2026-08-29)**: Botón «Nuevo» (`#btn-new-file` / `Ctrl+N`) para volver al panel de carga/drag & drop y botón «Abrir» (`#btn-open-file` / `Ctrl+O`) para abrir el selector de archivos del sistema directamente.
-* **Próximo paso — retomar aquí**: ver «📍 Snapshot de contexto — 2026-08-29, conversación sobre tiendas»
-  justo debajo del backlog de escritorio.
+* **Próximo paso — retomar en la siguiente conversación**:
+  - [ ] **Optimización de Textos de Tienda (`descripcionStore_es.md` y `descripcionStore_en.md`)**: Redactar y pulir descripciones comerciales completas para Microsoft Store y Uptodown (títulos, subtítulos de 1 línea, características clave, privacidad offline zero-trust, aceleración GPU y formatos de exportación).
+  - [ ] **Diseño de Imagen Destacada Promocional (Hero / Featured Image)**: Generar imagen de portada de alto impacto visual (estilo `EER_Studio`) que sintetice la propuesta de valor: *"Convierte PDFs e infografías en presentaciones editables sin subir datos a la nube"*.
+  - [ ] **Capturas de Pantalla Promocionales (Store Screenshots)**: Tomar y maquetar capturas oficiales de la aplicación:
+    1. Pantalla de bienvenida con dropzone y barra limpia.
+    2. Editor visual Canvas con detección inteligente y edición inline WYSIWYG.
+    3. Goma Mágica e Inpainting local de fondos.
+    4. Modo Vista Previa limpio y menú de exportación con salvaguardas.
 
 ---
 

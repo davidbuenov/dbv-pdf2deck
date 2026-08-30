@@ -12,6 +12,11 @@ from contextlib import asynccontextmanager
 import logging
 import sys
 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from api.endpoints import router as api_router
+
 # Protección para subprocesos y pipes anónimos de Windows (evita OSError 22 al hacer flush)
 if sys.platform == "win32":
     try:
@@ -34,20 +39,17 @@ class SafeStreamHandler(logging.StreamHandler):
 
 logging.StreamHandler = SafeStreamHandler
 
-from api.endpoints import router as api_router
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Eventos clave en el ciclo de vida del servidor."""
-    print("\n[INIT] Pre-calentando Motor OCR en CPU...")
+    from core.ocr_engine import get_ocr_device_info, _get_reader
+    info = get_ocr_device_info()
+    print(f"\n[INIT] Pre-calentando Motor OCR en modo {info['label']} ({info['name']})...")
     print("[INIT] (Si es la primera vez, descargará los modelos de EasyOCR aquí para evitar colgar la red luego)")
     try:
-        from core.ocr_engine import _get_reader
         _get_reader()
-        print("[INIT] Motor OCR Cargado exitosamente. Servidor operativo.\n")
+        print(f"[INIT] Motor OCR Cargado exitosamente ({info['label']}). Servidor operativo.\n")
     except Exception as e:
         print(f"[ERR] Falla preventiva al cargar OCR central: {e}")
     yield
@@ -72,15 +74,22 @@ app.include_router(api_router)
 
 
 @app.get("/health")
-def health_check() -> dict[str, str]:
+def health_check() -> dict[str, object]:
     """
     Ruta básica para comprobar el estado de salud y arranque del servidor.
 
     Returns:
-        dict[str, str]: Estado actual del servidor y API.
+        dict[str, object]: Estado actual del servidor, inicialización de OCR y aceleración de hardware.
     """
-    status: dict[str, str] = {"status": "running"}
-    return status
+    import core.ocr_engine as ocr_mod
+    info = ocr_mod.get_ocr_device_info()
+    return {
+        "status": "running",
+        "ocr_ready": ocr_mod._reader is not None,
+        "ocr_device": info["device"],
+        "ocr_label": info["label"],
+        "device_name": info["name"]
+    }
 
 if __name__ == "__main__":
     import argparse

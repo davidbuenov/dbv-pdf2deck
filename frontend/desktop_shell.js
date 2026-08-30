@@ -286,7 +286,7 @@ function mountExportMenu() {
 }
 
 // ─── Barra de estado ─────────────────────────────────────────────────────────
-function setEngineStatus(online) {
+function setEngineStatus(online, healthInfo) {
     const dot = $("engine-dot");
     const text = $("engine-status");
     if (dot) {
@@ -295,8 +295,9 @@ function setEngineStatus(online) {
     }
     if (text) {
         const isEn = window.DBV_I18N?.getLang?.() === "en";
+        const modeLabel = healthInfo?.ocr_label ? ` (${healthInfo.ocr_label})` : "";
         text.textContent = online
-            ? (isEn ? "Local OCR engine active · no cloud connection" : "Motor OCR local activo · sin conexión a la nube")
+            ? (isEn ? `Local OCR active${modeLabel} · no cloud connection` : `Motor OCR local activo${modeLabel} · sin conexión a la nube`)
             : (isEn ? "Waiting for local OCR engine…" : "Esperando al motor OCR local…");
     }
 }
