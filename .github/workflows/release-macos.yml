@@ -13,10 +13,12 @@ name: Release macOS
 #   TAURI_SIGNING_PRIVATE_KEY           clave privada minisign (contenido, no ruta)
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  su contraseña (cadena vacía si no tiene)
 #
-# Build universal (--target universal-apple-darwin): el runner macos-latest
-# es Apple Silicon, así que sin esto el binario no arrancaría en un Mac Intel
-# (Rosetta traduce x86_64→Apple Silicon, no al revés). Ver
-# dbv-specs-ops/docs/NATIVE_APPS_RELEASE_CI.md §5.
+# Solo Apple Silicon (--target aarch64-apple-darwin), decisión consciente
+# (2026-08-30): un build universal (universal-apple-darwin) necesita el
+# sidecar Python compilado dos veces, una por arquitectura real — PyInstaller
+# no compila cruzado, empaqueta el intérprete que lo ejecuta — y no hay forma
+# de verificar aquí que las dependencias (torch) sigan publicando wheels de
+# macOS Intel. Apple no vende Macs Intel desde 2023.
 
 on:
   push:
@@ -56,10 +58,10 @@ jobs:
             echo "value=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Instalar Rust (targets Intel + Apple Silicon)
+      - name: Instalar Rust (Apple Silicon)
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: "aarch64-apple-darwin,x86_64-apple-darwin"
+          targets: "aarch64-apple-darwin"
 
       - name: Instalar Node.js
         uses: actions/setup-node@v5
@@ -70,7 +72,7 @@ jobs:
         run: |
           python3 -m venv .venv-sidecar
           .venv-sidecar/bin/python -m pip install -r packaging/requirements-sidecar.txt
-          .venv-sidecar/bin/python packaging/build_sidecar.py --target-triple universal-apple-darwin
+          .venv-sidecar/bin/python packaging/build_sidecar.py --target-triple aarch64-apple-darwin
 
       - name: Instalar dependencias de Node
         run: npm install
@@ -86,7 +88,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          args: --target universal-apple-darwin
+          args: --target aarch64-apple-darwin
           tagName: ${{ steps.version.outputs.tag }}
           releaseName: ${{ steps.version.outputs.tag }}
           releaseDraft: ${{ steps.draft.outputs.value }}

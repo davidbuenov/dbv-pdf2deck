@@ -30,6 +30,16 @@
   en IIFE y el motor expone una única API en `window.dbvCanvasEngine`. Se elimina la carga ESM dinámica
   para que el WebView nativo use scripts clásicos, manteniendo las tres operaciones públicas del canvas.
 
+- **2026-08-30 — macOS: solo Apple Silicon, contradice el default del framework (`NATIVE_APPS_RELEASE_CI.md`
+  §5, build `universal-apple-darwin`).** Primera ejecución real de `release-macos.yml` (tag `v2.0.0`)
+  reveló que el sidecar Python no se puede compilar "universal": PyInstaller no compila cruzado, empaqueta
+  el intérprete que lo ejecuta, así que haría falta un segundo build completo (torch, easyocr...) bajo
+  Rosetta para `x86_64-apple-darwin`, sin garantía de que las dependencias sigan publicando wheels de
+  macOS Intel. Decisión del usuario: `aarch64-apple-darwin` únicamente — Apple no vende Macs Intel desde
+  2023. `release-macos.yml` actualizado (target de Tauri, target de Rust, `--target-triple` del sidecar);
+  el patrón "universal" del framework sigue siendo el default correcto para proyectos sin esta pieza
+  Python nativa.
+
 ## ⚠️ Lecciones Aprendidas / Errores Evitados
 
 - **[Verificar, no creer al documento]**: en agosto se detectaron dos casos de lecciones que un ADR daba por escritas en el framework y que nunca habían llegado allí. La regla: *un documento que declara algo no es prueba de que sea cierto*. Se aplicó aquí y valió la pena — el `TASKS.md` de abril citaba números de línea que ya no existían, y el `STATUS.md` apuntaba a v1.3.0 con el proyecto en v1.5.0.

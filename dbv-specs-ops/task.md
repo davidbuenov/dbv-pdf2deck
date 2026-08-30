@@ -291,6 +291,11 @@ Configurado el 2026-08-29. Canal self-hosted por GitHub Releases con
 - [x] **macOS: descartado Mac App Store.** El canal de macOS es **Uptodown**, igual que el resto del
       portfolio — decisión del usuario en la conversación del 2026-08-29. Sin certificado Apple
       Developer, sin notarización, sin revisión de tienda para esta plataforma.
+- [x] **macOS: build solo Apple Silicon, no universal (2026-08-30).** El primer intento real de
+      `release-macos.yml` (tag `v2.0.0`) falló: el sidecar Python no admite `--target-triple
+      universal-apple-darwin` de un solo build (PyInstaller no compila cruzado). `release-macos.yml`
+      cambiado a `aarch64-apple-darwin` únicamente. Detalle y alternativa descartada (Rosetta + build
+      x86_64 duplicado) en `dbv-specs-ops/memory.md`.
 - [x] ⚠️ **Bloqueo del tamaño del sidecar, anulado a propósito (2026-08-30).** `torch` + CUDA
       congelados con PyInstaller son 2–5 GB. La estrategia decidida el 2026-08-29 —instalador base
       pequeño + asistente de primer arranque que provisiona el entorno de OCR— **sigue sin construirse**,
