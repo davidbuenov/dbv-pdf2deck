@@ -1,0 +1,289 @@
+<!--
+  DBV PDF2Deck — Política de Privacidad (GitHub Pages / Microsoft Store)
+  Copyright (c) 2026 David Bueno Vallejo
+  Licensed under the MIT License. See LICENSE for details.
+-->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Política de Privacidad — DBV PDF2Deck</title>
+  <meta name="description" content="Política de privacidad de DBV PDF2Deck: la aplicación no recolecta datos personales ni telemetría. Todo el procesamiento OCR, edición visual y exportación ocurren 100% en local." />
+  <link rel="icon" type="image/svg+xml" href="frontend/favicon.svg" />
+  <style>
+    :root {
+      --bg-main: #0b0f19;
+      --bg-card: #131b2e;
+      --bg-hover: #1c2742;
+      --border: #243252;
+      --accent: #3b82f6;
+      --accent-hover: #60a5fa;
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-main);
+      color: var(--text-primary);
+      font-family: var(--font-ui);
+      line-height: 1.7;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      background: rgba(11, 15, 25, 0.85);
+      backdrop-filter: blur(10px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .nav-inner {
+      max-width: 840px;
+      margin: 0 auto;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--text-primary);
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 17px;
+      letter-spacing: -0.01em;
+    }
+
+    .nav-brand span.dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.7);
+      display: inline-block;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .nav-link {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 14px;
+      transition: color 0.15s;
+    }
+
+    .nav-link:hover {
+      color: var(--text-primary);
+    }
+
+    .lang-btn {
+      padding: 5px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg-card);
+      color: var(--text-primary);
+      font-size: 13px;
+      text-decoration: none;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+
+    .lang-btn:hover {
+      background: var(--bg-hover);
+      border-color: var(--accent);
+    }
+
+    main {
+      flex: 1;
+      padding: 48px 24px 80px;
+    }
+
+    .legal {
+      max-width: 840px;
+      margin: 0 auto;
+    }
+
+    .legal h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+
+    .legal .legal-updated {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+
+    .legal-summary {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin: 24px 0 36px;
+    }
+
+    .legal-summary p {
+      color: var(--text-primary);
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    .legal h2 {
+      font-size: 20px;
+      font-weight: 700;
+      margin: 36px 0 12px;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .legal h2::before {
+      content: "";
+      display: inline-block;
+      width: 4px;
+      height: 16px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    .legal p, .legal li {
+      color: var(--text-secondary);
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    .legal ul {
+      padding-left: 24px;
+      margin: 12px 0 20px;
+    }
+
+    .legal li {
+      margin-bottom: 8px;
+    }
+
+    .legal strong {
+      color: var(--text-primary);
+    }
+
+    .legal a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .legal a:hover {
+      text-decoration: underline;
+    }
+
+    .legal code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      background-color: var(--bg-hover);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 13px;
+      color: var(--text-primary);
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      background: var(--bg-main);
+      padding: 28px 24px;
+      font-size: 13px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    footer a {
+      color: var(--text-secondary);
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="nav-inner">
+      <a href="https://github.com/davidbuenov/dbv-pdf2deck" class="nav-brand" target="_blank" rel="noopener">
+        <span class="dot"></span> DBV PDF2Deck
+      </a>
+      <div class="nav-links">
+        <a href="https://github.com/davidbuenov/dbv-pdf2deck" class="nav-link" target="_blank" rel="noopener">← Repositorio GitHub</a>
+        <a href="privacy.html" class="lang-btn">English</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <article class="legal">
+      <h1>Política de Privacidad</h1>
+      <p class="legal-updated">Última actualización: 30 de agosto de 2026</p>
+
+      <div class="legal-summary">
+        <p><strong>Resumen fundamental:</strong> DBV PDF2Deck es una aplicación diseñada bajo el principio de <strong>privacidad total desde el diseño (Zero-Cloud Privacy)</strong>. <strong>No recolecta, no transmite ni almacena en servidores externos ningún dato personal, documento PDF, imagen ni presentación editada.</strong> No tiene cuentas de usuario, no contiene publicidad ni analítica, y no envía telemetría de ningún tipo. Todo el reconocimiento óptico de caracteres (OCR), edición sobre lienzo y exportación ocurre 100% en local en tu propio ordenador.</p>
+      </div>
+
+      <h2>1. Procesamiento local de PDFs, imágenes y presentaciones</h2>
+      <p>Todos los archivos PDF e imágenes (PNG, JPG, WEBP) que abres, procesas o editas en <strong>DBV PDF2Deck</strong> son analizados exclusivamente en la memoria y procesador/GPU local de tu equipo mediante motores de código abierto locales (EasyOCR, OpenCV y PyMuPDF).</p>
+      <p>La aplicación no cuenta con servidores remotos de recolección ni bases de datos en la nube. Tus documentos, informes, diapositivas e infografías nunca salen de tu ordenador ni son transmitidos por internet.</p>
+
+      <h2>2. Datos almacenados en tu dispositivo</h2>
+      <p>Para ofrecer una experiencia cómoda y fluida, DBV PDF2Deck almacena de forma estrictamente local en tu entorno de escritorio o navegador (<code>localStorage</code>) los siguientes ajustes de configuración:</p>
+      <ul>
+        <li><strong>Ajustes de interfaz:</strong> El idioma seleccionado (Español o Inglés).</li>
+        <li><strong>Preferencias de exportación:</strong> La resolución de renderizado por defecto para las diapositivas de PowerPoint (150, 300 o 600 DPI) y las opciones de exportación activas (.pptx, .pdf, .md).</li>
+      </ul>
+      <p>Estos datos residen únicamente en el almacenamiento local de tu equipo y puedes eliminarlos en cualquier momento restableciendo la configuración de la aplicación o desinstalándola.</p>
+
+      <h2>3. Conexiones de red y arquitectura offline</h2>
+      <p>DBV PDF2Deck está construido con una arquitectura <strong>100% offline-first</strong>:</p>
+      <ul>
+        <li><strong>Sin dependencias de CDN externas:</strong> Todas las tipografías, iconos, scripts y recursos de interfaz están autoalojados e integrados dentro de la aplicación.</li>
+        <li><strong>Sin telemetría ni rastreo:</strong> La aplicación no realiza peticiones periódicas de sondeo, diagnóstico ni estadísticas de uso a ningún servidor.</li>
+        <li><strong>Procesamiento local desconectado:</strong> Puedes utilizar todas las funciones de reconocimiento OCR, edición visual de bloques, Goma Mágica y exportación a PowerPoint sin necesidad de conexión a internet.</li>
+      </ul>
+
+      <h2>4. Distribución desde Microsoft Store y tiendas de aplicaciones</h2>
+      <p>Si has instalado DBV PDF2Deck desde la <strong>Microsoft Store</strong> u otra tienda de aplicaciones, la plataforma de distribución puede recopilar datos anónimos agregados de descarga, instalación y diagnóstico de fallos del sistema operativo según sus propios términos. Para más detalles sobre cómo Microsoft gestiona estos datos, puedes consultar la <a href="https://privacy.microsoft.com/es-es/privacystatement" target="_blank" rel="noopener">Declaración de Privacidad de Microsoft</a>.</p>
+
+      <h2>5. Código abierto y transparencia</h2>
+      <p>DBV PDF2Deck es software libre y de código abierto publicado bajo licencia MIT. El código fuente completo está disponible públicamente para su auditoría, revisión y colaboración comunitaria en <a href="https://github.com/davidbuenov/dbv-pdf2deck" target="_blank" rel="noopener">github.com/davidbuenov/dbv-pdf2deck</a>.</p>
+
+      <h2>6. Contacto</h2>
+      <p>Si tienes cualquier duda, sugerencia o consulta sobre esta política de privacidad, puedes contactar con el autor abriendo un issue en <a href="https://github.com/davidbuenov/dbv-pdf2deck/issues" target="_blank" rel="noopener">GitHub Issues</a> o a través del sitio web oficial <a href="https://davidbuenov.com" target="_blank" rel="noopener">davidbuenov.com</a>.</p>
+    </article>
+  </main>
+
+  <footer>
+    <p>DBV PDF2Deck · Software Libre bajo Licencia MIT · © 2026 <a href="https://davidbuenov.com" target="_blank" rel="noopener">David Bueno Vallejo</a></p>
+  </footer>
+
+</body>
+</html>
