@@ -23,10 +23,8 @@ def parse_arguments() -> argparse.Namespace:
 def main() -> None:
     arguments = parse_arguments()
     project_root = Path(__file__).resolve().parent.parent
-    binary_directory = project_root / "src-tauri" / "binaries"
-    binary_directory.mkdir(parents=True, exist_ok=True)
+    sidecar_directory = project_root / "src-tauri" / "sidecar"
     executable_suffix = ".exe" if "windows" in arguments.target_triple else ""
-    output_name = f"dbv-pdf2deck-sidecar-{arguments.target_triple}{executable_suffix}"
     pyinstaller_name = f"dbv-pdf2deck-sidecar{executable_suffix}"
 
     command = [
@@ -35,7 +33,7 @@ def main() -> None:
         "PyInstaller",
         "--clean",
         "--noconfirm",
-        "--onefile",
+        "--onedir",
         "--name",
         "dbv-pdf2deck-sidecar",
         "--paths",
@@ -95,10 +93,40 @@ def main() -> None:
         str(project_root / "backend" / "main.py"),
     ]
     subprocess.run(command, cwd=project_root, check=True)
-    built_binary = project_root / "dist" / pyinstaller_name
-    if not built_binary.is_file():
-        raise FileNotFoundError(f"PyInstaller no genero el ejecutable esperado: {built_binary}")
-    shutil.copy2(built_binary, binary_directory / output_name)
+    built_directory = project_root / "dist" / "dbv-pdf2deck-sidecar"
+    built_executable = built_directory / pyinstaller_name
+    if not built_executable.is_file():
+        raise FileNotFoundError(f"PyInstaller no genero el ejecutable esperado: {built_executable}")
+
+    # --onedir, no --onefile: el binario en --onefile compilaba y "funcionaba" en CI
+    # (que nunca lo ejecuta), pero se caía al arrancar en cualquier máquina real. Por
+    # eso el sidecar viaja como carpeta (recurso de Tauri, `bundle.resources`), no como
+    # `externalBin` de un solo fichero.
+    if sidecar_directory.exists():
+        shutil.rmtree(sidecar_directory)
+    shutil.copytree(built_directory, sidecar_directory)
+
+    # Causa real del arranque roto (WinError 1114 / 0xc0000005 al cargar `c10.dll`,
+    # visor de sucesos de Windows -> módulo con errores real: `msvcp140.dll`): alguna
+    # dependencia (torch/numpy/opencv...) vendoriza su propia copia del runtime de
+    # Visual C++ (v14.16.27033.0, de 2019) dentro del paquete, y PyInstaller la coloca
+    # en `_internal/` donde el orden de búsqueda de DLL de Windows la encuentra ANTES
+    # que la del sistema — la vendorizada es incompatible con el resto de DLLs nativas
+    # del propio paquete y revienta al inicializarse. El sistema ya trae una versión
+    # más nueva y compatible (confirmado: v14.51.36247.0 en System32) — basta con NO
+    # enviar la vendorizada para que la resolución de DLL caiga sola al system32.
+    # Verificado de extremo a extremo: sin este borrado el sidecar se cae siempre al
+    # arrancar (frozen); con él, EasyOCR carga y `/api/v1/health` responde.
+    vc_runtime_dll_names = (
+        "msvcp140.dll",
+        "vcruntime140.dll",
+        "vcruntime140_1.dll",
+    )
+    internal_directory = sidecar_directory / "_internal"
+    for dll_name in vc_runtime_dll_names:
+        vendored_dll = internal_directory / dll_name
+        if vendored_dll.is_file():
+            vendored_dll.unlink()
 
 
 if __name__ == "__main__":

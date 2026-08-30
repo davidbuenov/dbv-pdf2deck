@@ -30,7 +30,7 @@
   "bundle": {
     "active": true,
     "publisher": "David Bueno Vallejo",
-    "externalBin": ["binaries/dbv-pdf2deck-sidecar"],
+    "resources": ["sidecar/**/*"],
     "targets": "all",
     "createUpdaterArtifacts": true,
     "icon": [

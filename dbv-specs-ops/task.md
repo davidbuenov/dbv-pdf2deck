@@ -11,7 +11,7 @@
   - **PyMuPDF 100% erradicado**: Backend migrado a `pypdfium2`, `reportlab` y `pypdf`. Arnés de 41 tests unitarios pasando al 100% (`41 passed`).
   - **EasyOCR + GPU CUDA activo**: Entorno oficial `backend/venv` configurado con todas las librerías necesarias y funcionando a pleno rendimiento.
   - **Limpieza de fondo selectiva + Goma Mágica (Inpaint Eraser)**: Implementada limpieza quirúrgica sobre bloques seleccionados y herramienta interactiva `🧹 Goma` con inpainting reiterativo local de OpenCV.
-  - **Tauri v2 Sidecar**: Binario `dbv-pdf2deck-sidecar-x86_64-pc-windows-msvc.exe` compilado y ubicado en `src-tauri/binaries/`. `cargo check` completado con 0 errores y 0 warnings.
+  - **Tauri v2 Sidecar**: reescrito el 2026-08-30 tras descubrir que nunca había funcionado en ejecución real (ver Fase 6). Viaja como carpeta `--onedir` en `src-tauri/sidecar/` (recurso de Tauri), no como `.exe` único. Verificado de extremo a extremo en Windows local.
   - **Shell de escritorio rediseñado (2026-08-29)**: barra superior nativa de 48 px con las herramientas
     dentro (mismo esqueleto que DBV Markdown Reader), chincheta *always-on-top*, modal «Acerca de» con
     versión, menú de exportación, barra de estado y scrollbars tematizadas. La Goma Mágica se dibuja
@@ -59,6 +59,8 @@
       4. `04_preview_mode_clean_*.png`: Modo Vista Previa limpio (WYSIWYG puro sin rectángulos de selección).
       5. `05_export_modal_powerpoint_*.png`: Menú de exportación desplegado con opciones PPTX (150–600 DPI), PDF vectorial y Markdown.
     - Sincronizadas las fichas `descripcionStore_es.md`, `descripcionStore_en.md`, `descripcionStoreUptoDown_es.md`, `descripcionStoreUptoDown_en.md` y `README.md` a la versión **2.0.0** con la galería de assets completa.
+    - Generadas versiones PNG sin pérdidas de los banners promocionales (`hero_featured_banner_*.png` en 1376×768 y 1920×1080) para Microsoft Store.
+    - Creados los documentos oficiales de política de privacidad bilingües (`privacidad.html` y `privacy.html`) con diseño responsivo oscuro Zero-Cloud Privacy y enlazados a las fichas de tienda.
 
 ---
 
@@ -118,10 +120,28 @@ Procedimiento: `MIGRATION_PROMPT.md` de `dbv-tauri-starter`. Contexto y decision
   detecta Tauri mediante `runningInTauri`. El transporte sigue siendo HTTP local en ambos modos hasta
   la incorporación del sidecar y el puerto dinámico en Fase 6.
 - [x] **Fase 6** — Sidecar Python (PyInstaller) + asistente de primer arranque para el entorno de OCR.
-  Base preparada y ejecutada: binario target-specific `dbv-pdf2deck-sidecar-x86_64-pc-windows-msvc.exe`
-  construido en `src-tauri/binaries/`, `cargo check` verificado y superado con éxito. Detección, monitor de reintentos
-  de salud dinámico en `frontend/api.js` y `frontend/main.js`, CORS universal local en `backend/main.py` y streaming
-  de logs del sidecar en `src-tauri/src/lib.rs`.
+  Base preparada y ejecutada. Detección, monitor de reintentos de salud dinámico en `frontend/api.js` y
+  `frontend/main.js`, CORS universal local en `backend/main.py` y streaming de logs del sidecar en
+  `src-tauri/src/lib.rs`.
+  - **Reescrito de raíz (2026-08-30): el sidecar nunca había funcionado en ejecución real.**
+    `cargo check` solo compila Rust, nunca ejecutó el `.exe` de Python — el primer intento real de
+    `/ship` de la v2.0.0 reveló que se caía al arrancar en cualquier máquina. Dos causas distintas,
+    encontradas en cadena:
+    1. **`--onefile` de PyInstaller no es viable aquí.** El `.exe` compilaba y "funcionaba" en CI (que
+       nunca lo ejecuta), pero se caía siempre al arrancar en ejecución real. Migrado a `--onedir`: el
+       sidecar ahora viaja como carpeta (`src-tauri/sidecar/`, recurso de Tauri vía `bundle.resources`),
+       no como `externalBin` de un solo fichero. `src-tauri/src/lib.rs` resuelve la ruta con
+       `app.path().resource_dir()` y lanza con `app.shell().command(...)` en vez de `.sidecar(...)`.
+    2. **La causa raíz real** (Visor de sucesos de Windows, no el mensaje de Python): `OSError` al
+       cargar `c10.dll` con código `0xc0000005` dentro de `msvcp140.dll` — alguna dependencia (torch/
+       numpy/opencv...) vendoriza su propia copia del runtime de Visual C++ (v14.16.27033.0, de 2019),
+       PyInstaller la coloca en `_internal/` donde el orden de búsqueda de DLL de Windows la encuentra
+       **antes** que la del sistema (más nueva, v14.51, ya presente), y esa copia vieja revienta al
+       inicializarse junto al resto de DLL nativas del paquete. Fix: `packaging/build_sidecar.py` borra
+       `msvcp140.dll`/`vcruntime140.dll`/`vcruntime140_1.dll` del paquete tras el build, dejando que la
+       resolución de DLL caiga sola al `system32`. **Verificado de extremo a extremo** con la app real
+       de Tauri compilada en local (Windows): EasyOCR carga y `/health` responde `ocr_ready: true`.
+       Sin verificar todavía en Linux/macOS (no hay máquinas aquí para probarlo).
 - [ ] **Fase 7** — Verificación ejecutando el binario real + DoD de Experiencia de Escritorio (6 criterios).
   Estado por criterio (§7 de `docs/NATIVE_DESKTOP_APPS.md`):
   - [ ] 1 · **Diálogos de archivo nativos**. Sigue usándose `<input type="file">` para abrir y el truco

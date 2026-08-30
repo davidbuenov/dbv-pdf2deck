@@ -40,6 +40,18 @@
   el patrón "universal" del framework sigue siendo el default correcto para proyectos sin esta pieza
   Python nativa.
 
+- **2026-08-30 — El sidecar Python nunca se había ejecutado de verdad; `cargo check` no lo prueba.**
+  Primer intento real de `/ship` (tag `v2.0.0`) reveló que el `.exe` del sidecar se caía al arrancar en
+  cualquier máquina. Causa raíz (Visor de sucesos de Windows, no el mensaje de Python): una copia vieja
+  y vendorizada de `msvcp140.dll` (v14.16, de 2019) embebida por alguna dependencia (torch/numpy/
+  opencv), que el orden de búsqueda de DLL de Windows encuentra antes que la del sistema (más nueva) y
+  revienta al inicializarse. Fix en `packaging/build_sidecar.py`: borrar esa DLL vendorizada del
+  paquete tras el build. De paso, `--onefile` tampoco era viable (compilaba pero no arrancaba en
+  ejecución real) — el sidecar pasó a `--onedir`, empaquetado como recurso de Tauri
+  (`bundle.resources`) en vez de `externalBin`. Lección para cualquier binario nativo empaquetado con
+  PyInstaller: **verificar arrancándolo de verdad, no solo compilándolo** — ni `cargo check` ni un CI
+  que solo construye (sin ejecutar) habrían detectado esto nunca.
+
 ## ⚠️ Lecciones Aprendidas / Errores Evitados
 
 - **[Verificar, no creer al documento]**: en agosto se detectaron dos casos de lecciones que un ADR daba por escritas en el framework y que nunca habían llegado allí. La regla: *un documento que declara algo no es prueba de que sea cierto*. Se aplicó aquí y valió la pena — el `TASKS.md` de abril citaba números de línea que ya no existían, y el `STATUS.md` apuntaba a v1.3.0 con el proyecto en v1.5.0.

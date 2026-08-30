@@ -333,9 +333,27 @@ pub fn run() {
                 }
             }
 
-            match app.shell().sidecar("dbv-pdf2deck-sidecar") {
-                Ok(cmd) => {
-                    match cmd.args(["--port", &port.to_string()]).spawn() {
+            // El sidecar viaja como recurso de Tauri (carpeta `sidecar/`), no como
+            // `externalBin` de un solo fichero: PyInstaller `--onefile` descarta en
+            // silencio las DLL nativas de PyTorch (`torch/lib/*.dll`) en este build,
+            // y el .exe resultante se cae al arrancar. `--onedir` sí las incluye, pero
+            // el mecanismo `externalBin`/`.sidecar()` de Tauri asume un único fichero,
+            // así que se lanza con `.command()` sobre la ruta resuelta del recurso.
+            match app.path().resource_dir() {
+                Ok(resource_dir) => {
+                    let sidecar_exe_name = if cfg!(windows) {
+                        "dbv-pdf2deck-sidecar.exe"
+                    } else {
+                        "dbv-pdf2deck-sidecar"
+                    };
+                    let sidecar_path = resource_dir.join("sidecar").join(sidecar_exe_name);
+
+                    match app
+                        .shell()
+                        .command(&sidecar_path)
+                        .args(["--port", &port.to_string()])
+                        .spawn()
+                    {
                         Ok((mut rx, child)) => {
                             tauri::async_runtime::spawn(async move {
                                 use tauri_plugin_shell::process::CommandEvent;
@@ -375,7 +393,7 @@ pub fn run() {
                     }
                 }
                 Err(error) => {
-                    eprintln!("[DBV Tauri] Advertencia al localizar sidecar: {error}");
+                    eprintln!("[DBV Tauri] Advertencia al resolver el recurso del sidecar: {error}");
                 }
             }
             Ok(())

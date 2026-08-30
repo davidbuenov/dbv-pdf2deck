@@ -58,6 +58,7 @@ Terminando
 dist/
 build/
 src-tauri/binaries/*.exe
+src-tauri/sidecar/
 
 # ----------------------------------------------------------------------------
 # IDEs y editores
