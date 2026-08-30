@@ -15,8 +15,11 @@ un editor visual en canvas. `[CONFIRMADO]`
 El diferencial es que **todo ocurre en el ordenador del usuario**: sin Adobe Acrobat, sin subir
 ficheros a ningún servicio en la nube, con aceleración GPU opcional. `[CONFIRMADO]`
 
-**Objetivo actual**: convertir la app en aplicación de escritorio nativa (Tauri v2) manteniendo el
-modo web, y eliminar la dependencia AGPL que impide sostener la licencia MIT. `[CONFIRMADO]`
+**Objetivo actual (actualizado 2026-08-31, cumplido en v2.0.0)**: la app ya es aplicación de escritorio
+nativa (Tauri v2) manteniendo el modo web, y la dependencia AGPL que impedía sostener la licencia MIT
+ya fue eliminada. `[CONFIRMADO]` El foco pasa a: verificar en ejecución real macOS y Linux (publicados
+en GitHub Releases pero sin probar en máquina real todavía) y esperar la certificación de Microsoft
+Partner Center del MSIX enviado. Ver `task.md`, snapshot 2026-08-31.
 
 ## 👥 2. Usuarios y Escenarios
 
@@ -37,7 +40,10 @@ modo web, y eliminar la dependencia AGPL que impide sostener la licencia MIT. `[
 - **RF-05** Editor visual en canvas: edición de texto, multi-selección, igualar estilos, fusionar bloques, alineación, redimensionado, Undo/Redo de 50 estados, auto-ajuste de tamaño. `[CONFIRMADO]`
 - **RF-06** Exportación a **PPTX**, **PDF** y **Markdown**, empaquetados en ZIP y seleccionables por el usuario. `[INFERIDO: generate_export_zip()]`
 - **RF-07** Modo de exportación `only_modified` vs. todos los bloques. `[INFERIDO]`
-- **RF-08** Limpieza de fondo asistida por IA (`google-genai`) y variante local. `[INFERIDO: endpoints /clean-background y /clean-background-local]`
+- **RF-08** Limpieza de fondo local con OpenCV (inpainting), único modo accesible desde la UI actual.
+  El código de la variante cloud (`google-genai`) sigue presente pero el control que la activa está
+  oculto (`#ai-external-options[hidden]`) — el botón real de "Limpiar Fondo" siempre llama en modo
+  local. `[CONFIRMADO: verificado en frontend/index.html y canvas_engine.js, 2026-08-30]`
 - **RF-09** Progreso en tiempo real por SSE durante el procesado. `[INFERIDO]`
 - **RF-10** *(nuevo)* Ejecución como aplicación de escritorio nativa en **modo dual**: el mismo código debe seguir funcionando en navegador. `[CONFIRMADO]`
 
@@ -62,11 +68,12 @@ backend Python como **sidecar** congelado con PyInstaller. Ver `ARCHITECTURE.md`
 
 | Riesgo | Impacto | Mitigación |
 | --- | --- | --- |
-| **Contradicción de licencia**: PyMuPDF es AGPL-3.0 bajo un proyecto MIT | 🔴 Bloqueante para distribuir | Sustitución por `pypdfium2`+`reportlab`+`pypdf` decidida y medida. **No publicar instaladores hasta que aterrice** |
-| **Bug crítico de exportación OCR** abierto desde abril | 🔴 Rompe el caso de uso estrella | Se resuelve con la misma sustitución: el sustituto reporta el sobrante en vez de descartarlo |
-| **Tamaño del instalador**: torch+CUDA con PyInstaller son 2–5 GB | 🟠 Descarta Microsoft Store tal cual | Instalador base pequeño + asistente de primer arranque que provisiona el OCR |
-| **Cobertura de tests cero** sobre un pipeline con lógica geométrica densa | 🟠 La reescritura puede degradar en silencio | Modo pro: arnés `pytest` y tests de regresión del lector antes de sustituir |
-| **Frontend sin bundler**: colisión de identificadores globales al añadir Tauri | 🟠 Interfaz muerta sin error visible | IIFE por fichero antes de tocar Tauri; nunca declarar `const isTauri` |
+| ~~Contradicción de licencia: PyMuPDF AGPL-3.0 bajo un proyecto MIT~~ | — | **Resuelto 2026-08-28.** Sustituido por `pypdfium2`+`reportlab`+`pypdf`, verificado. |
+| ~~Bug crítico de exportación OCR~~ | — | **Resuelto** con la misma sustitución: el sustituto reporta el sobrante en vez de descartarlo. |
+| **Tamaño del instalador**: torch+easyocr con PyInstaller son 2–5 GB | 🟠 Instalador pesado, canales de tienda más lentos de descargar | Decisión consciente (2026-08-30): publicar el paquete completo tal cual. El asistente de primer arranque que lo reduciría sigue sin construirse — mejora futura, no bloqueante de v2.0.0. |
+| ~~Cobertura de tests cero~~ | — | **Resuelto.** 45+ tests en `backend/tests/` cubriendo lector, exportador, geometría y fusión OCR. |
+| ~~Frontend sin bundler: colisión de identificadores globales al añadir Tauri~~ | — | **Resuelto y blindado.** IIFE por fichero aplicada; `scripts/check-tauri-globals.mjs` aborta el build si algo colisiona con los globales de Tauri (`isTauri`, `__TAURI__`...). |
+| **macOS y Linux publicados sin verificar en ejecución real** | 🔴 Podrían no arrancar para usuarios reales pese a compilar en CI (ya pasó en Windows con el sidecar) | Pruebas reales de usuario en ambas plataformas — pendiente, es el siguiente hito (ver `task.md`). |
 | **Banco de validación fuera de git** (13 PDFs en `docs_david/`) | 🟡 Tests no reproducibles en CI | `[PENDIENTE: versionar un subconjunto mínimo o generar PDFs sintéticos]` |
 
 ## ❓ 7. Preguntas Abiertas
@@ -74,7 +81,9 @@ backend Python como **sidecar** congelado con PyInstaller. Ver `ARCHITECTURE.md`
 - `[PENDIENTE]` ¿Se versiona un subconjunto del banco de PDFs para que los tests sean reproducibles fuera de este equipo?
 - `[PENDIENTE]` ¿Cómo se distribuye el pack de OCR (2–5 GB)? Asistente de descarga vs. CPU-only con modelo pequeño embebido.
 - `[PENDIENTE]` El rescate de enlaces ocultos (`markdown_exporter.py`) no tiene ningún PDF de prueba con anotaciones de enlace. Hace falta uno antes de portarlo.
-- `[PENDIENTE]` ¿`google-genai` (limpieza de fondo con IA) sigue siendo funcionalidad de primera línea o es accesoria? Afecta a si la clave de API es requisito de instalación.
+- `[RESUELTO 2026-08-30]` ¿`google-genai` sigue siendo de primera línea? No: el control que la activa
+  está oculto en la UI actual, así que hoy es funcionalidad latente, no accesoria activa. La clave de
+  API no es requisito de instalación bajo ningún escenario actual.
 
 ## 🧪 8. Criterios de Evaluación y Evals (No Deterministas)
 

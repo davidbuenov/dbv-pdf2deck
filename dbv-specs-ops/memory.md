@@ -10,8 +10,14 @@
 
 ## 🎯 Contexto Activo
 
-- **Estado actual del desarrollo:** DBV PDF2Deck v1.5.0 está publicado y en producción. En curso: migración a escritorio nativo con Tauri v2 (rama `feat/tauri-desktop`), Fase 2 completada del `MIGRATION_PROMPT.md`.
-- **Foco inmediato:** Fase 3 — traer artefactos de `dbv-tauri-starter` e identidad de la app. La sustitución de PyMuPDF queda decidida pero deliberadamente aparcada hasta después de Tauri.
+- **Estado actual del desarrollo (2026-08-31):** DBV PDF2Deck v2.0.0 — migración a escritorio con
+  Tauri v2 completada y **publicada por primera vez** (`feat/tauri-desktop` fusionada a `main`, tag
+  `v2.0.0`). PyMuPDF 100% erradicado. Windows verificado de extremo a extremo (app real + sidecar +
+  MSIX); macOS y Linux publicados en GitHub Releases pero **sin verificar en ejecución real todavía**.
+  MSIX enviado a Microsoft Partner Center, a la espera de certificación.
+- **Foco inmediato:** relanzar Linux (se arregló un `.rpm` colgado, ver Log de Decisiones) y conseguir
+  pruebas reales de usuario en macOS/Linux antes de dar la v2.0.0 por estable en esas dos plataformas.
+  Ver el snapshot de contexto en `task.md` (2026-08-31) para el detalle paso a paso.
 
 ## 🏗️ Log de Decisiones Técnicas (ADR Ligero)
 
@@ -51,6 +57,34 @@
   (`bundle.resources`) en vez de `externalBin`. Lección para cualquier binario nativo empaquetado con
   PyInstaller: **verificar arrancándolo de verdad, no solo compilándolo** — ni `cargo check` ni un CI
   que solo construye (sin ejecutar) habrían detectado esto nunca.
+
+- **2026-08-30 — Permisos de Actions del repo en solo lectura, techo que ningún YAML puede superar.**
+  Los tres workflows de release fallaban al crear la Release con `Resource not accessible by
+  integration`, pese a declarar `permissions: contents: write` a nivel de job. Causa:
+  `default_workflow_permissions` del repositorio (Settings → Actions → General) estaba en `"read"` —
+  ese valor es un **techo**, no un default que el YAML pueda escalar por encima. Corregido con
+  `gh api --method PUT repos/.../actions/permissions/workflow -f default_workflow_permissions=write`.
+  Lección: si un workflow con permisos explícitos correctos sigue fallando con ese error exacto,
+  comprobar primero el ajuste de repo antes de tocar el YAML.
+
+- **2026-08-30 — `MakeAppx.exe` en modo directorio no sigue *reparse points* (symlinks de Windows).**
+  El copiado de recursos de Tauri (`bundle.resources`) deja las carpetas/ficheros de destino como
+  symlinks, no como copias reales. `MakeAppx.exe pack /d <dir>` los ignora en su enumeración —
+  "Packing 2 file(s)" cuando había 4771 reales — y falla o genera un `.msixbundle` vacío sin avisar.
+  Reproducido con `MakeAppx.exe` directo, sin ninguna herramienta de terceros de por medio. Fix:
+  `packaging/build_msix.mjs`, un fichero de mapeo (`/f`) generado recorriendo el árbol con
+  `fs.statSync` (que sí sigue symlinks) en vez de depender de `/d`. Detalle completo en la memoria
+  de sesión del agente (`makeappx-symlink-mapping-file`).
+
+- **2026-08-30/31 — `.rpm` de Linux se cuelga sin log; nunca fue un canal de distribución planeado.**
+  Con `bundle.targets: "all"`, Tauri intenta `.deb` (bien) y `.rpm` en el mismo job de
+  `release-linux.yml` — el `.rpm` se quedó colgado 30-40 minutos sin ninguna línea de log, dos veces
+  seguidas, hasta cancelarlo a mano. El proyecto solo distribuye `.deb`/`.AppImage` en Linux (ver
+  README) — `.rpm` no aportaba nada y encima rompía el pipeline. Fix: `src-tauri/tauri.linux.conf.json`
+  con `bundle.targets: ["deb", "appimage"]`, usando el mecanismo nativo de Tauri v2 de config por
+  plataforma (JSON Merge Patch), el mismo que ya se usaba para el `identifier` de MSIX — no se
+  investigó la causa exacta del colgado de `rpmbuild`, se descartó el formato entero por no ser
+  necesario.
 
 ## ⚠️ Lecciones Aprendidas / Errores Evitados
 

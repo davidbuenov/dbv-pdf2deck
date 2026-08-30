@@ -1,7 +1,10 @@
 # 🏗 Arquitectura Técnica: DBV PDF2Deck
 
-> Documenta la arquitectura **tal como está hoy (2026-08-28, v1.5.0)**, no como debería ser.
-> Los cambios en curso (Tauri v2, sustitución de PyMuPDF) se marcan como *en migración*.
+> Documenta la arquitectura **tal como está hoy (2026-08-31, v2.0.0)**, no como debería ser.
+> La migración a Tauri v2 y la sustitución de PyMuPDF, que en la versión anterior de este documento
+> aparecían "en migración", están **completadas y publicadas**. Ver `task.md` para el detalle de qué
+> está verificado en ejecución real por plataforma (Windows sí; macOS y Linux, publicados pero
+> pendientes de probar en máquina real) y `memory.md` para el porqué de cada decisión.
 
 ---
 
@@ -9,17 +12,17 @@
 
 | Capa | Tecnología | Notas |
 | --- | --- | --- |
-| Backend | **FastAPI** 0.110+ / **uvicorn** 0.29+ | Servidor local en `localhost`, arrancado por `.cmd` |
-| Runtime | **Python 3.12** (recomendado 3.12.10) | venv en `backend/venv/` |
-| Lectura PDF | **PyMuPDF** 1.27.2.2 (`fitz`) | ⚠️ **AGPL-3.0 — en sustitución** por `pypdfium2` |
-| Escritura PDF | **PyMuPDF** | ⚠️ **En sustitución** por `reportlab` + `pypdf` |
-| OCR | **EasyOCR** 1.7.2 + **PyTorch** 2.5.1+cu121 | GPU CUDA 12.1 opcional, CPU como alternativa |
-| Presentaciones | **python-pptx** | Sin dependencia de PyMuPDF |
-| Imagen | **Pillow**, **opencv-python-headless** | |
-| IA generativa | **google-genai** | Limpieza de fondo ("Nano Banana") |
-| Frontend | **JS clásico, sin bundler y sin `package.json`** | `canvas_engine.js` (78 KB) + `main.js` (9 KB) |
+| Backend | **FastAPI** 0.110+ / **uvicorn** 0.29+ | Servidor local en `localhost`; en escritorio corre como sidecar |
+| Runtime | **Python 3.12** (recomendado 3.12.10) | venv en `backend/venv/` (dev) / `.venv-sidecar/` aparte (build del sidecar) |
+| Lectura PDF | **pypdfium2** | PyMuPDF (AGPL-3.0) erradicado por completo; ver ADR 2026-08-28 en `memory.md` |
+| Escritura PDF | **reportlab** + **pypdf** | reportlab genera, pypdf fusiona sobre el PDF original in-place |
+| OCR | **EasyOCR** + **PyTorch** (CPU o CUDA) | GPU opcional, CPU como alternativa (`try/except` en `ocr_engine.py`) |
+| Presentaciones | **python-pptx** | |
+| Imagen | **Pillow**, **opencv-python-headless** | Inpainting local (Goma Mágica) |
+| IA generativa | **google-genai** | Limpieza de fondo cloud — código presente pero **oculto** en la UI actual (`#ai-external-options[hidden]`); el botón real siempre usa el modo local |
+| Frontend | **JS clásico, sin bundler, IIFE por fichero** | `canvas_engine.js`, `main.js`, `api.js`, `desktop_shell.js`, `i18n.js`, `help_content.js` — todos cargados como `<script>` clásico, cada uno expone su API bajo un único `window.dbv*` |
 | Render UI | **Canvas 2D** nativo | Sin framework de UI |
-| Escritorio | **Tauri v2** | *En migración* — rama `feat/tauri-desktop` |
+| Escritorio | **Tauri v2** | Completo y publicado (v2.0.0) — ver sección dedicada abajo |
 
 ## 📂 Estructura de Directorios
 
@@ -31,26 +34,79 @@ dbv-pdf2deck/
 │   ├── api/
 │   │   └── endpoints.py        # Superficie HTTP. Fija DPI=100. Enruta OCR vs nativo
 │   ├── core/
-│   │   ├── pdf_renderer.py     # Lee/rasteriza PDF, extrae bloques nativos con estilo
+│   │   ├── pdf_renderer.py     # Lee/rasteriza PDF (pypdfium2), extrae bloques nativos con estilo
 │   │   ├── ocr_engine.py       # EasyOCR + heurísticas de estilo
-│   │   ├── exporter_engine.py  # Reensamblado a PDF y PPTX
+│   │   ├── exporter_engine.py  # Reensamblado a PDF (reportlab+pypdf) y PPTX
 │   │   ├── markdown_exporter.py# Exportación a MD + rescate de enlaces
-│   │   ├── ai_cleaner.py       # Limpieza de fondo con google-genai
+│   │   ├── ai_cleaner.py       # Limpieza de fondo (local OpenCV; rama cloud oculta)
 │   │   ├── settings.py         # Config por entorno (.env)
 │   │   └── result.py           # Tipo Result/Ok/Err
-│   ├── tests/                  # ⚠️ VACÍA — cobertura cero (ver task.md, modo pro)
+│   ├── tests/                  # 45+ tests, ver `/code-simplify` y Fase de tests en task.md
 │   └── venv/                   # Ignorado
-├── frontend/
+├── frontend/                    # Compartido entre modo web y escritorio
 │   ├── index.html
-│   ├── canvas_engine.js        # Editor visual (78 KB)
-│   ├── main.js                 # Orquestación UI ← aquí entrará api.js (Fase 5)
+│   ├── canvas_engine.js        # Editor visual Canvas
+│   ├── main.js                 # Orquestación UI, carga de documentos, atajos
+│   ├── api.js                  # Único fichero que sabe si estamos en Tauri (`runningInTauri`)
+│   ├── desktop_shell.js        # Chrome de escritorio: barra superior, chincheta, «Acerca de», updater
+│   ├── i18n.js                 # ES/EN, patrón `dbv-md-reader`
+│   ├── help_content.js         # Contenido del modal de ayuda
 │   └── styles.css
-├── docs/                       # Guías públicas (no informáticos, CUDA, styleguide)
+├── scripts/
+│   └── check-tauri-globals.mjs # Puerta de build: aborta si un .js colisiona con globales de Tauri
+├── packaging/
+│   ├── build_sidecar.py        # PyInstaller --onedir + poda de DLL/licencias vendorizadas
+│   └── build_msix.mjs          # Empaquetado MSIX con fichero de mapeo (ver sección Escritorio)
+├── src-tauri/                   # Rust/Tauri v2
+│   ├── src/lib.rs              # Arranque, sidecar, menú nativo de macOS, comandos IPC
+│   ├── sidecar/                 # Generado — salida de build_sidecar.py, recurso de Tauri
+│   ├── gen/windows/             # bundle.config.json + manifiesto para el MSIX
+│   ├── tauri.conf.json          # Config base
+│   └── tauri.linux.conf.json    # Override: targets Linux limitados a deb+appimage (sin rpm)
+├── docs/                       # Guías públicas (no informáticos, CUDA, styleguide) + assets de tienda
 ├── docs_david/                 # ⚠️ IGNORADO por git — notas internas + banco de PDFs
 ├── dbv-specs-ops/              # Framework SDD (esta carpeta)
 ├── MIGRACION_ESCRITORIO.md     # Contexto y decisiones de la migración a escritorio
+├── README.md / README.en.md    # Bilingüe, instalación de escritorio priorizada sobre la web
 └── start_dev.cmd / ejecutar_dbv.cmd / instalar_y_ejecutar.cmd
 ```
+
+## 🖥️ Escritorio (Tauri v2) — completo y publicado
+
+- **Modo dual, no sustitución**: el mismo backend FastAPI y el mismo frontend sirven tanto al modo web
+  como al escritorio. `frontend/api.js` es el único fichero que sabe si está corriendo bajo Tauri
+  (`runningInTauri`); el resto del frontend no se entera.
+- **Backend como sidecar Python**, no reescrito en Rust: `easyocr` es la razón de ser de la app y no
+  tiene equivalente maduro en Rust. Empaquetado con PyInstaller `--onedir` (no `--onefile` — ver
+  `memory.md`, `--onefile` no arranca en ejecución real con esta combinación de dependencias) y
+  bundleado como **recurso de Tauri** (`bundle.resources`), no como `externalBin` de un solo fichero.
+  `src-tauri/src/lib.rs` resuelve la ruta con `app.path().resource_dir()` y lo lanza con
+  `app.shell().command(...)`.
+- **`packaging/build_sidecar.py`** también poda del paquete: la DLL vendorizada de Visual C++ que
+  colisiona con la del sistema (Windows), `torch/include/` (cabeceras C++ nunca usadas en runtime) y
+  `licenses/` de cada `.dist-info` (rutas anidadísimas que rozan el límite de 260 caracteres de
+  Windows).
+- **Menú de aplicación nativo de macOS** (`#[cfg(target_os = "macos")] mod macos_menu` en `lib.rs`),
+  portado del patrón ya probado en `dbv-md-reader` — localización ES/EN según el idioma del sistema,
+  acciones reales (Nuevo/Abrir/Exportar/Deshacer/Rehacer/Alternar vista previa) reenviadas al frontend
+  por eventos. Sin verificar en un Mac real todavía.
+- **Puerta de build contra colisión de globales de Tauri** (`scripts/check-tauri-globals.mjs`,
+  enganchada en `beforeDevCommand`/`beforeBuildCommand`): instancia cada `.js` del frontend en un
+  contexto `node:vm` con los globales que Tauri inyecta (`isTauri`, `__TAURI__`...) y aborta el build
+  si algún fichero colisiona — el mismo incidente real que dejó la interfaz de escritorio muerta en
+  `dbv-teleprompter` (v0.2.0, publicado).
+- **Empaquetado MSIX para Microsoft Store** (`packaging/build_msix.mjs`): genera el `.msixbundle` con
+  un fichero de mapeo para `MakeAppx.exe` en vez de su modo directorio — el modo directorio no sigue
+  los *reparse points* (symlinks) que deja el copiado de recursos de Tauri, y silenciosamente empaqueta
+  solo un puñado de ficheros de miles. Verificado de extremo a extremo (desempaquetado real +
+  sidecar arrancado). Enviado a Partner Center, a la espera de certificación.
+- **Distribución multiplataforma** vía GitHub Releases (`.github/workflows/release-{windows,linux,macos}.yml`):
+  Windows (NSIS + MSI), Linux (`.deb` + `.AppImage` — `.rpm` deliberadamente excluido, ver `memory.md`),
+  macOS (`.dmg`, solo `aarch64-apple-darwin` — Apple no vende Macs Intel desde 2023, y un build
+  universal exigiría compilar el sidecar Python dos veces sin garantía de wheels para macOS Intel).
+- **Auto-actualización** con `tauri-plugin-updater` + clave minisign propia (con contraseña, custodiada
+  fuera del repo). Las instalaciones de tienda (MSIX) se detectan con `is_packaged_app()` y ocultan el
+  botón — las actualiza la tienda, no el updater propio.
 
 ## 🔑 Decisiones Técnicas Clave
 
@@ -88,18 +144,24 @@ dbv-pdf2deck/
 
 ## ⚠️ Restricciones y Riesgos Técnicos
 
-- **`PyMuPDF` es AGPL-3.0** bajo un proyecto MIT. Bloquea la distribución de binarios. Sustitución
-  decidida y medida; ver `task.md`.
 - **`build_pdf_export_from_original()` modifica el PDF original in-place**, cosa que reportlab no sabe
-  hacer. Por eso el reemplazo necesita además `pypdf`.
+  hacer por sí solo — de ahí que el exportador necesite además `pypdf` para fusionar sobre el original.
 - **Doble fuente de verdad del DPI**: `pdf_renderer.py` tiene `dpi=150` por defecto pero
   `endpoints.py:189` llama con `dpi=100`. **Manda el endpoint.** Trampa clásica al tocar escalas.
-- **El estilo OCR es heurístico, no real**: `ocr_engine.py:105` estima `bbox_height * 0.76` acotado a
-  [10, 96]. Nunca fue el tamaño tipográfico real, y es una de las causas del bug crítico.
-- **Frontend sin bundler**: los scripts comparten ámbito global. Requiere IIFE por fichero antes de
-  introducir Tauri, y está prohibido declarar `const isTauri`.
-- **Cobertura de tests cero**: `backend/tests/` está vacía.
+- **El estilo OCR es heurístico, no real**: `ocr_engine.py` estima el tamaño a partir del alto del
+  bbox (rango ampliado a [10, 400] tras el bug WYSIWYG de 2026-08-30). Nunca es el tamaño tipográfico
+  real de origen.
+- **Frontend sin bundler**: los scripts comparten ámbito global. IIFE obligatoria por fichero (ya
+  aplicada a los seis ficheros de `frontend/`) y prohibido declarar `const isTauri` (o cualquier
+  identificador que colisione con los globales que Tauri inyecta) — hay una puerta de build
+  (`scripts/check-tauri-globals.mjs`) que lo comprueba automáticamente, pero sigue siendo la trampa más
+  fácil de reintroducir sin darse cuenta al añadir un `.js` nuevo.
+- **macOS y Linux publicados sin verificar en ejecución real** (solo Windows lo está, de extremo a
+  extremo). Ver `task.md`, snapshot 2026-08-31.
 - **El banco de validación está fuera de git** (`docs_david/` ignorado + regla `*.pdf`).
+- **Instalador pesado (2-5 GB)**: torch+easyocr congelados con PyInstaller. Decisión consciente —
+  ver `memory.md` — de enviar el paquete completo tal cual en vez de esperar a un asistente de primer
+  arranque que provisione el OCR bajo demanda; ese asistente sigue sin construirse.
 
 ## 🤖 Agent Harness (Arnés del Agente)
 
@@ -107,8 +169,8 @@ dbv-pdf2deck/
 
 `dbv-specs-ops/task.md` es la fuente de verdad operativa y `memory.md` la cualitativa.
 `MIGRACION_ESCRITORIO.md` (raíz) conserva el detalle de los spikes y las decisiones de la migración.
-`docs_david/` es **histórico**: está desactualizado (su `STATUS.md` apunta a v1.3.0 con el proyecto en
-v1.5.0) y fuera de git — no usarlo como estado actual.
+`docs_david/` es **histórico**: está muy desactualizado (predata incluso la migración a Tauri) y fuera
+de git — no usarlo como estado actual bajo ningún concepto.
 
 ### 2. Herramientas y MCP (Model Context Protocol)
 
@@ -117,13 +179,15 @@ No hay servidores MCP configurados para este proyecto.
 ### 3. Entorno de Ejecución (Sandboxing)
 
 Desarrollo local en Windows. Python del proyecto en `backend/venv/Scripts/python.exe`.
-**No instalar dependencias experimentales en ese venv**: los spikes usan un venv aparte.
+**No instalar dependencias experimentales en ese venv**: usa uno aparte (`.venv-sidecar/` es el que
+usa `packaging/build_sidecar.py` para congelar el sidecar con PyInstaller, y ya está gitignored).
 
 ### 4. Guardrails Deterministas de Seguridad
 
 - Validación de tamaño y extensión antes de procesar (`settings.py` + `pdf_renderer.py`).
 - Extensiones permitidas restringidas por lista blanca (`SUPPORTED_IMAGE_EXTENSIONS`).
-- **No publicar instaladores mientras PyMuPDF siga en `requirements.txt`** (restricción legal, no técnica).
+- La restricción histórica de "no publicar instaladores mientras PyMuPDF siga en `requirements.txt`"
+  ya no aplica — PyMuPDF está erradicado desde el 2026-08-28 y la v2.0.0 ya se publicó.
 
 ### 5. Interfaz Externa para Agentes (Agent Readiness)
 

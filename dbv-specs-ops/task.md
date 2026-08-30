@@ -62,6 +62,19 @@
     - Generadas versiones PNG sin pérdidas de los banners promocionales (`hero_featured_banner_*.png` en 1376×768 y 1920×1080) para Microsoft Store.
     - Creados los documentos oficiales de política de privacidad bilingües (`privacidad.html` y `privacy.html`) con diseño responsivo oscuro Zero-Cloud Privacy y desplegados en GitHub Pages.
   - **🚀 Envío a la Tienda Completado (2026-08-30)**: Paquete MSIX v2.0.0, metadatos, assets promocionales, capturas nativas y directivas de privacidad enviados con éxito a **Microsoft Partner Center** para su certificación y publicación en Microsoft Store.
+  - **📦 v2.0.0 publicada en GitHub Releases (2026-08-30/31, borrador `v2.0.0`)**: los tres workflows de
+    release corrieron de verdad por primera vez y revelaron (y se corrigieron) varios fallos que ningún
+    `cargo check` ni build de CI sin ejecución podía detectar — detalle completo en «🖥️ Migración a
+    escritorio» (Fase 6/8) y en `memory.md`. Estado por plataforma:
+    - **Windows**: `.exe` (NSIS) y `.msi` firmados, publicados. Verificado de extremo a extremo en local
+      (la app real arranca, EasyOCR carga, `/health` responde).
+    - **macOS**: `.dmg`/`.app.tar.gz` (solo Apple Silicon, `aarch64-apple-darwin`) publicados. Build
+      verde en CI, **sin verificar en un Mac real todavía** — ni el sidecar en ejecución ni el menú
+      nativo (`mod macos_menu`).
+    - **Linux**: pendiente de re-lanzar tras arreglar un `.rpm` que se quedaba colgado 30-40 min sin
+      log (ver Fase 8). `.deb`/`.AppImage` sin verificar en ejecución real.
+    - **Siguiente hito de esta zona**: pruebas reales de usuario en macOS y Linux (instalar el paquete
+      publicado, no solo compilarlo) antes de anunciar la v2.0.0 como estable en esas dos plataformas.
 
 ---
 
@@ -178,7 +191,33 @@ Procedimiento: `MIGRATION_PROMPT.md` de `dbv-tauri-starter`. Contexto y decision
   - [ ] 6 · **Tooltips con los atajos**. Solo deshacer y rehacer los anuncian.
   - [x] **Versión sincronizada en los cuatro sitios**: `package.json`, `tauri.conf.json`, `Cargo.toml`
         (estaba desincronizado en `0.1.0`) y el panel «Acerca de».
-- [ ] **Fase 8** — Documentar, `/ship` y primer instalador.
+- [x] **Fase 8** — `/ship` ejecutado (2026-08-30/31): tag `v2.0.0` publicada, los tres workflows de
+  release corridos (con reintentos — ver abajo), MSIX enviado a Partner Center. Documentación
+  actualizada el 2026-08-31 para reflejar el estado real tras el primer ciclo de release completo.
+  Bugs de infraestructura encontrados y corregidos en el camino (ninguno existía antes de intentar
+  publicar de verdad):
+  - **Permisos del repo en solo lectura**: `default_workflow_permissions: "read"` a nivel de
+    repositorio impedía que CUALQUIER workflow creara la Release, sin importar su propio
+    `permissions: contents: write` — es un techo que el YAML no puede superar. Corregido vía
+    `gh api PUT .../actions/permissions/workflow` a `"write"`.
+  - **`tqdm` ausente de `backend/requirements.txt`**: `packaging/build_sidecar.py` pedía
+    `--copy-metadata tqdm` pero nunca era una dependencia directa — solo estaba en el venv local por
+    casualidad, transitiva de un paquete ausente en la resolución limpia de CI. PyInstaller fallaba en
+    los tres sistemas operativos exactamente ahí. Añadido explícito.
+  - **`.rpm` de Linux se cuelga sin log** (`release-linux.yml`): con `bundle.targets: "all"`, Tauri
+    intenta generar `.deb` (bien, ~3 min) y `.rpm` — este último se queda colgado 30-40 min sin ninguna
+    línea de log hasta el timeout, dos veces seguidas. `.rpm` nunca fue un canal de distribución
+    planeado (el proyecto solo distribuye `.deb`/`.AppImage` en Linux). Corregido con
+    `src-tauri/tauri.linux.conf.json` → `bundle.targets: ["deb", "appimage"]` (merge de config
+    específico de plataforma, mecanismo nativo de Tauri v2, no algo inventado).
+  - **Clave de firma minisign regenerada**: la que había (ver «🔄 Auto-actualización» abajo) no tenía
+    contraseña y su privada no estaba respaldada de forma verificable. Se generó un par nuevo con
+    contraseña, se subió como secretos de GitHub (`TAURI_SIGNING_PRIVATE_KEY`/`_PASSWORD`) y se entregó
+    al usuario para guardar en su repositorio de claves personal — la nota anterior de este fichero
+    sobre `~/.tauri/dbv-pdf2deck.key` queda obsoleta.
+  - Ver también, en la sección de la migración a escritorio más abajo: el sidecar reescrito de raíz
+    (Fase 6), el build de macOS restringido a Apple Silicon, y el pipeline de MSIX con fichero de
+    mapeo (`packaging/build_msix.mjs`).
 
 ### ⚠️ Riesgos conocidos de la Fase 4 (no descubrir por las malas)
 
@@ -269,17 +308,17 @@ De `docs_david/TASKS.md`, para no perder el rastro de lo que ya funciona:
 Configurado el 2026-08-29. Canal self-hosted por GitHub Releases con
 `tauri-plugin-updater`; las tiendas gestionan sus propias actualizaciones.
 
-- **Clave de firma minisign** generada para el proyecto. La pública vive en
-  `src-tauri/tauri.conf.json` → `plugins.updater.pubkey`. La privada está en
-  `~/.tauri/dbv-pdf2deck.key` (fuera del repo, sin contraseña) y **hay que
-  respaldarla**: si se pierde, ninguna instalación existente podrá volver a
-  auto-actualizarse nunca; habría que publicar una clave nueva y pedir a todo
-  el mundo que reinstale a mano.
-- **Secretos que faltan por dar de alta en GitHub** (Settings → Secrets and
-  variables → Actions):
-  - `TAURI_SIGNING_PRIVATE_KEY` — el **contenido** del fichero `.key`, no la ruta.
-  - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — cadena vacía.
-  Sin ellos, los tres workflows de release fallan al construir.
+- **Clave de firma minisign regenerada el 2026-08-30** (la anterior no tenía contraseña y no estaba
+  respaldada de forma verificable). La pública vive en `src-tauri/tauri.conf.json` →
+  `plugins.updater.pubkey`. La privada (con contraseña) se entregó al usuario en el chat para guardar
+  en su repositorio de claves personal — **no vive en ningún sitio de este equipo ni de este repo**.
+  Si se pierde, ninguna instalación existente podrá volver a auto-actualizarse nunca; habría que
+  publicar una clave nueva y pedir a todo el mundo que reinstale a mano.
+- **Secretos ya dados de alta en GitHub** (2026-08-30, Settings → Secrets and variables → Actions):
+  - `TAURI_SIGNING_PRIVATE_KEY` — el contenido del fichero `.key`, no la ruta.
+  - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+  Subidos vía `gh secret set`. Sin ellos, los tres workflows de release fallan al construir
+  (`bundle.createUpdaterArtifacts` está activo).
 - **`latest.json` lo genera CI**, no se mantiene a mano: `includeUpdaterJson: true`
   en los tres workflows lo escribe y lo acumula en la misma Release borrador,
   con las tres plataformas dentro.
@@ -293,9 +332,11 @@ Configurado el 2026-08-29. Canal self-hosted por GitHub Releases con
 
 ### Pendiente para las tiendas
 
-- [ ] Dar de alta los dos secretos de firma y **lanzar un tag de prueba** para
-      verificar el ciclo completo: build → `latest.json` → botón «Buscar
-      actualizaciones» encontrando la versión nueva.
+- [x] Secretos de firma dados de alta y **tag `v2.0.0` lanzada de verdad** (2026-08-30/31) — ciclo
+      completo build → `latest.json` ejercitado en Windows y macOS (assets firmados publicados en el
+      borrador de Release). Pendiente el mismo ciclo para Linux (ver Fase 8, fix del `.rpm` colgado) y
+      pendiente comprobar en un cliente real que el botón «Buscar actualizaciones» encuentra esta
+      versión — de momento solo se ha verificado que el build y la firma se generan.
 - [x] **Empaquetado MSIX** para Microsoft Store, wireado y verificado de extremo a extremo (2026-08-30)
       con `@choochmeque/tauri-windows-bundle` (validado antes en `dbv-md-reader`, no inventado):
       `src-tauri/gen/windows/bundle.config.json` con `identifier: "davidbuenov.DBVPDF2Deck"`,
@@ -339,10 +380,10 @@ Configurado el 2026-08-29. Canal self-hosted por GitHub Releases con
       pequeño + asistente de primer arranque que provisiona el entorno de OCR— **sigue sin construirse**,
       pero el usuario decidió explícitamente enviar igualmente el instalador completo (sin el asistente)
       al wireado de MSIX de hoy, en vez de esperar a construirlo. El tamaño en sí no es el bloqueo de
-      política: el límite MSIX es 25 GB por paquete, muy por encima de lo que hace falta. Pendiente:
-      decidir si esta misma anulación aplica también al envío real a Partner Center (la certificación
-      de la Store es un paso posterior y manual, todavía no ejecutado) o si el asistente se construye
-      antes de dar ese paso.
+      política: el límite MSIX es 25 GB por paquete, muy por encima de lo que hace falta. **Resuelto**:
+      la anulación se mantuvo también para el envío real — el paquete completo (sin el asistente) se
+      envió a Partner Center el 2026-08-30, a la espera de certificación. El asistente de primer
+      arranque sigue sin construirse; queda como mejora futura, ya no como bloqueante de esta versión.
 - [x] **Fichas de contenido para las dos tiendas redactadas (2026-08-30)**: `descripcionStore_es.md` /
       `_en.md` (Microsoft Store) y `descripcionStoreUptoDown_es.md` / `_en.md` (Uptodown, canal de
       macOS), en la raíz del repo, siguiendo el patrón validado en `dbv-md-reader`. **No enviar
@@ -358,50 +399,50 @@ Configurado el 2026-08-29. Canal self-hosted por GitHub Releases con
 
 ---
 
-## 📍 Snapshot de contexto — 2026-08-29, conversación sobre tiendas
+## 📍 Snapshot de contexto — 2026-08-31, tras el primer `/ship` real de v2.0.0
 
-**Retomar la conversación desde aquí.** Se investigó qué exige Microsoft Store para un paquete grande
-(2–5 GB por `torch`+CUDA) y se decidió la estrategia de envío, pero **no se ha implementado nada de
-empaquetado de tienda todavía** — el trabajo hecho en esta conversación es solo de investigación y
-decisión, más el cableado del updater (commit `e2f1627`, ya en el árbol).
+**Retomar la conversación desde aquí.** La v2.0.0 se publicó de verdad por primera vez el 2026-08-30/31
+(tag `v2.0.0`, borrador de GitHub Release) y se envió el MSIX a Microsoft Partner Center. Este primer
+intento real de release reveló varios bugs de infraestructura que ningún build-sin-ejecutar podía
+detectar (sidecar roto, permisos del repo, `.rpm` colgado — detalle completo en Fase 6/8 arriba y en
+`memory.md`). **Nada de esto estaba planificado como trabajo pendiente el 29 de agosto** — apareció al
+intentar publicar de verdad por primera vez, que es justo la lección a recordar: compilar en CI no es
+lo mismo que ejecutar.
 
-### Lo que se investigó (fuentes: Microsoft Learn, agosto 2026)
+### Qué está resuelto y verificado (con confianza alta)
 
-- **El tamaño no es el bloqueo.** Límite MSIX: 25 GB por paquete o bundle. 2–5 GB entra sobrado.
-- **Dos rutas de envío a Microsoft Store, con un matiz importante para este proyecto:**
-  - **MSIX** (recomendada aquí): la Store re-firma el paquete tras certificar — no hace falta
-    certificado de pago. Sin restricción sobre que la app descargue componentes después de instalada.
-  - **EXE/MSI por URL directa** (política 10.2.9): exige Authenticode firmado con CA del Trusted Root
-    Program (coste recurrente), URL versionada que vosotros alojáis, y —la frase clave— *"el instalador
-    es autónomo y no es un stub/instalador web que descarga bits al ejecutarse"*. Esa cláusula apunta al
-    *instalador*, no a que la app ya instalada ofrezca un asistente de primer arranque — pero es una
-    línea difusa que MSIX evita por completo al no tener esa restricción.
-- **Por qué importa para vuestra estrategia ya decidida** (instalador base pequeño + asistente de
-  primer arranque que provisiona OCR): con MSIX, ese asistente es sin ambigüedad "funcionalidad de la
-  app", no "instalador que hace de stub". Con la ruta EXE/MSI, tendríais que defender esa distinción
-  ante certificación.
-- **Requisitos de certificación que os afectan directamente:**
-  - **10.2.4** — divulgar en la ficha de Partner Center que la app descarga el runtime de OCR tras
-    instalar.
-  - **10.3** — la app tiene que ser testable sin GPU CUDA (los certificadores probablemente no tengan
-    una). Ya resuelto de facto: `ocr_engine.py` importa `easyocr` en `try/except` y la app arranca sin
-    OCR.
-  - **10.4.2** — el asistente de descarga del runtime tiene que mostrar progreso real y no colgar la UI
-    ni la app si falla la red.
-- **macOS confirmado: Uptodown, no Mac App Store.** Sin certificado Apple Developer (99 $/año) ni
-  revisión de tienda para esta plataforma.
+- Sidecar Python reescrito (`--onedir` + recurso de Tauri) y **verificado de extremo a extremo en
+  Windows local**: la app real arranca, EasyOCR carga, `/health` responde.
+- MSIX empaquetado y **verificado de extremo a extremo**: desempaquetado del `.msixbundle` real,
+  sidecar extraído arrancado, `/health` responde. Enviado a Partner Center, a la espera de
+  certificación.
+- Menú nativo de macOS, puerta de build contra colisión de globales de Tauri, permisos del repo,
+  clave de firma minisign — todos aplicados y en el árbol.
+
+### Qué está publicado pero SIN verificar en ejecución real (confianza baja — solo "compila en CI")
+
+- **macOS**: `.dmg`/`.app.tar.gz` de la Release. Ni el sidecar ni el menú nativo se han probado en un
+  Mac de verdad. El bug de Windows (DLL vendorizada) es específico de Windows — macOS podría no tener
+  ningún problema análogo, o podría tener uno distinto (firma de código, `dyld`, notarización) que solo
+  aparecería al ejecutarlo.
+- **Linux**: build de `.deb`/`.AppImage` pendiente de relanzar tras quitar `.rpm` de los targets (se
+  quedaba colgado sin log). Tampoco se ha ejecutado el binario real todavía.
 
 ### Próximos pasos, en orden
 
-1. **Bloqueante primero, y no es de tienda**: dar de alta `TAURI_SIGNING_PRIVATE_KEY` y
-   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` en GitHub Secrets (ver «🔄 Auto-actualización» arriba) y lanzar
-   un tag de prueba — sin esto, los tres workflows de release fallan al construir, con o sin tienda.
-2. **Construir el asistente de primer arranque** que provisiona el entorno de OCR — es prerrequisito de
-   cualquier envío a tienda, no pulido posterior, y hoy no existe.
-3. **Reservar identidad en el Partner Center** (`Identity.Name`, `Publisher`) — bloqueante para
-   scaffoldar el empaquetado MSIX; sin esos valores exactos el manifiesto no puede generarse.
-4. Empaquetar con `@choochmeque/tauri-windows-bundle` (o equivalente) siguiendo el patrón ya validado en
-   `dbv-md-reader`.
+1. **Relanzar el workflow de Linux** (`gh workflow run release-linux.yml`, sin retaguear — los assets
+   de Windows/macOS ya están bien en el borrador `v2.0.0`) y confirmar que `.deb`/`.AppImage` se
+   publican sin colgarse.
+2. **Pruebas reales de usuario en macOS y Linux**: instalar el paquete publicado (no solo compilarlo) y
+   comprobar que el sidecar arranca, el OCR funciona y (en macOS) el menú nativo responde. Es el paso
+   que falta para tener la misma confianza que ya hay en Windows.
+3. **Esperar la certificación de Microsoft Partner Center** del MSIX enviado — sin acción nuestra
+   mientras tanto, salvo responder a lo que pida el equipo de certificación.
+4. **Uptodown (canal de macOS)**: decidido como canal desde el 2026-08-29, pero **todavía no se ha
+   enviado nada** — pendiente de tener el `.dmg` verificado en un Mac real primero.
+5. Asistente de primer arranque que provisiona el entorno de OCR: sigue sin construirse, ya no es
+   bloqueante de esta versión (ver «Pendiente para las tiendas» arriba), pero sigue siendo la mejora de
+   distribución más importante a medio plazo (instalador base pequeño en vez de los 2-5 GB actuales).
 
 ---
 

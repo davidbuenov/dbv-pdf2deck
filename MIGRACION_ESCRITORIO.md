@@ -1,5 +1,12 @@
 # 🖥️ Migración a escritorio nativo — punto de partida
 
+> ✅ **Migración completada y publicada (v2.0.0, 2026-08-30/31).** Este fichero queda como **registro
+> histórico** de las decisiones tomadas al arrancar la migración — sigue siendo la referencia de *por
+> qué* se decidió cada cosa (sidecar vs. reescritura en Rust, sustitución de PyMuPDF, modo dual...).
+> Para el estado **actual** (qué está verificado en ejecución real por plataforma, qué falta antes de
+> anunciar la v2.0.0 como estable en macOS/Linux, MSIX en Partner Center), ver el snapshot de contexto
+> del 2026-08-31 en `dbv-specs-ops/task.md` y el log de decisiones de `dbv-specs-ops/memory.md`.
+
 > **Qué es este fichero.** El arranque de la conversión de DBV PDF2Deck a aplicación de escritorio
 > (Tauri v2). Recoge el trabajo previo ya hecho el **2026-08-28** en una sesión sobre el repo
 > `dbv-tauri-starter`, para que la sesión que continúe aquí no tenga que redescubrirlo.
