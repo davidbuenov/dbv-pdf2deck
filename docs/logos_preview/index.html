@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DBV PDF2Deck — Galería de Prototipos de Logotipo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0d14;
+      --card-bg: rgba(22, 27, 46, 0.85);
+      --border: rgba(255, 255, 255, 0.1);
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.35);
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 40px 24px;
+      background-image: 
+        radial-gradient(circle at 20% 15%, rgba(99, 102, 241, 0.15), transparent 40%),
+        radial-gradient(circle at 80% 70%, rgba(56, 189, 248, 0.12), transparent 40%);
+      background-attachment: fixed;
+    }
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    h1 {
+      font-size: 40px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #ffffff 30%, #38bdf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 12px;
+    }
+    p.subtitle {
+      color: var(--text-muted);
+      font-size: 18px;
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+      gap: 28px;
+      margin-bottom: 50px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+      backdrop-filter: blur(16px);
+      display: flex;
+      flex-direction: column;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .card:hover {
+      border-color: rgba(56, 189, 248, 0.5);
+      transform: translateY(-6px);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), 0 0 30px var(--accent-glow);
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .card-number {
+      background: #1e293b;
+      color: var(--accent);
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+    .img-container {
+      width: 100%;
+      aspect-ratio: 1/1;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #000;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .img-container img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .desc {
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 1.5;
+      margin-bottom: 24px;
+      flex-grow: 1;
+    }
+    .sizes-preview {
+      background: rgba(11, 13, 20, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
+    .sizes-title {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+    .sizes-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .size-item {
+      text-align: center;
+    }
+    .size-item img {
+      border-radius: 8px;
+      display: block;
+      margin: 0 auto 4px auto;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .size-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .instructions {
+      text-align: center;
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      border-radius: 16px;
+      padding: 24px;
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    .instructions h3 {
+      font-size: 18px;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge">DBV PDF2Deck · Identity Studio</div>
+      <h1>Propuestas de Logotipo e Iconos</h1>
+      <p class="subtitle">Compara los 4 conceptos en alta resolución y en sus tamaños intermedios reducidos para elegir el diseño oficial.</p>
+    </header>
+
+    <div class="grid">
+      <!-- Opción 1 -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Laser AI Flow</h2>
+          <span class="card-number">OPCIÓN 1</span>
+        </div>
+        <div class="img-container">
+          <img src="opcion_1_1024.png" alt="Opción 1">
+        </div>
+        <p class="desc">PDF brillante escaneado por haz láser de IA, transformándose en diapositivas interactivas con gráficos y métricas de alta calidad.</p>
+        <div class="sizes-preview">
+          <div class="sizes-title">Prueba de tamaños reducidos</div>
+          <div class="sizes-row">
+            <div class="size-item">
+              <img src="opcion_1_128.png" width="64" height="64" alt="128px">
+              <div class="size-label">128px</div>
+            </div>
+            <div class="size-item">
+              <img src="opcion_1_64.png" width="48" height="48" alt="64px">
+              <div class="size-label">64px</div>
+            </div>
+            <div class="size-item">
+              <img src="opcion_1_64.png" width="32" height="32" alt="32px">
+              <div class="size-label">32px</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Opción 2 -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Isometric Glass & Gold</h2>
+          <span class="card-number">OPCIÓN 2</span>
+        </div>
+        <div class="img-container">
+          <img src="opcion_2_1024.png" alt="Opción 2">
+        </div>
+        <p class="desc">Base de cristal 3D con baraja isométrica ascendente de diapositivas y acentos dorados. Estilo ejecutivo prémium.</p>
+        <div class="sizes-preview">
+          <div class="sizes-title">Prueba de tamaños reducidos</div>
+          <div class="sizes-row">
+            <div class="size-item">
+              <img src="opcion_2_128.png" width="64" height="64" alt="128px">
+              <div class="size-label">128px</div>
+            </div>
+            <div class="size-item">
+              <img src="opcion_2_64.png" width="48" height="48" alt="64px">
+              <div class="size-label">64px</div>
+            </div>
+            <div class="size-item">
+              <img src="opcion_2_64.png" width="32" height="32" alt="32px">
+              <div class="size-label">32px</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Opción 3 -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Neon Fan-Out Cards</h2>
+          <span class="card-number">OPCIÓN 3</span>
+        </div>
+        <div class="img-container">
+          <img src="opcion_3_1024.png" alt="Opción 3">
+        </div>
+        <p class="desc">Lámina PDF ámbar translúcida que se despliega en abanico convirtiéndose en tarjetas neón cian y violeta de alto contraste.</p>
+        <div class="sizes-preview">
+          <div class="sizes-title">Prueba de tamaños reducidos</div>
+          <div class="sizes-row">
+            <div class="size-item">
+              <img src="opcion_3_128.png" width="64" height="64" alt="128px">
+              <div class="size-label">128px</div>
+            </div>
+            <div class="size-item">
+              <img src="opcion_3_64.png" width="48" height="48" alt="64px">
+              <div class="size-label">64px</div>
+            </div>
+            <div class="size-item">
+              <img src="opcion_3_64.png" width="32" height="32" alt="32px">
+              <div class="size-label">32px</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Opción 4 -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Iconic Dock Glyph</h2>
+          <span class="card-number">OPCIÓN 4</span>
+        </div>
+        <div class="img-container">
+          <img src="opcion_4_1024.png" alt="Opción 4">
+        </div>
+        <p class="desc">Símbolo estilizado y simétrico para macOS Dock y Windows Taskbar, fusionando PDF y presentación neón.</p>
+        <div class="sizes-preview">
+          <div class="sizes-title">Prueba de tamaños reducidos</div>
+          <div class="sizes-row">
+            <div class="size-item">
+              <img src="opcion_4_128.png" width="64" height="64" alt="128px">
+              <div class="size-label">128px</div>
+            </div>
+            <div class="size-item">
+              <img src="opcion_4_64.png" width="48" height="48" alt="64px">
+              <div class="size-label">64px</div>
+            </div>
+            <div class="size-item">
+              <img src="opcion_4_64.png" width="32" height="32" alt="32px">
+              <div class="size-label">32px</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="instructions">
+      <h3>¿Listo para elegir?</h3>
+      <p style="color: var(--text-muted); font-size: 15px;">Simplemente dime en el chat cuál es tu favorita (<b>Opción 1, 2, 3 o 4</b>) y generaremos automáticamente todo el lote de producción para Tauri, Windows Store, macOS, Linux y Favicons.</p>
+    </div>
+  </div>
+</body>
+</html>

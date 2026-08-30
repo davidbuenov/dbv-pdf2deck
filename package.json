@@ -6,7 +6,8 @@
   "scripts": {
     "tauri": "tauri",
     "check:tauri-globals": "node scripts/check-tauri-globals.mjs",
-    "tauri:windows:build": "tauri-windows-bundle build"
+    "tauri:windows:build": "tauri-windows-bundle build --runner npm",
+    "tauri:windows:msix": "node packaging/build_msix.mjs"
   },
   "devDependencies": {
     "@choochmeque/tauri-windows-bundle": "^0.1.28",

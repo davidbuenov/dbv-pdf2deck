@@ -117,6 +117,18 @@ Turns image-only PDFs and AI infographics into fully editable PowerPoint, with l
 
 *(leave blank — standard Store terms apply; the app itself is MIT licensed)*
 
+### Privacy policy URL
+
+https://davidbuenov.github.io/dbv-pdf2deck/privacy.html
+
+### Website URL
+
+https://davidbuenov.com
+
+### Support and contact URL
+
+https://github.com/davidbuenov/dbv-pdf2deck/issues
+
 ### Developed by
 
 David Bueno Vallejo

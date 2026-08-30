@@ -128,6 +128,26 @@ def main() -> None:
         if vendored_dll.is_file():
             vendored_dll.unlink()
 
+    # `--copy-metadata` copia el `.dist-info` entero de cada paquete para que
+    # `importlib.metadata` funcione en tiempo de ejecución (solo lee `METADATA`,
+    # `RECORD`, `WHEEL`, `top_level.txt` — nunca `licenses/`). PyTorch vendoriza ahí
+    # los textos de licencia de TODAS sus dependencias C++ de terceros (Kineto,
+    # dynolog, prometheus-cpp, civetweb, duktape, googletest...) en rutas anidadísimas
+    # que rozan o superan el límite clásico de 260 caracteres de Windows. MakeAppx.exe
+    # (empaquetado MSIX) descarta esas rutas en silencio sin avisar — de 870 MB de
+    # contenido real, el `.msixbundle` resultante solo llevaba 6 ficheros. Se borra sin
+    # riesgo: no es código, solo texto legal que `importlib.metadata` nunca lee.
+    for licenses_directory in internal_directory.glob("*.dist-info/licenses"):
+        shutil.rmtree(licenses_directory)
+
+    # `torch/include/` son las cabeceras C++ de libtorch para compilar extensiones
+    # nativas contra PyTorch — 60+ MB que nadie usa en tiempo de ejecución (el
+    # sidecar solo llama a la API Python de torch, nunca compila C++/CUDA) y, de
+    # paso, la fuente de las rutas más largas de todo el paquete.
+    torch_include_directory = internal_directory / "torch" / "include"
+    if torch_include_directory.is_dir():
+        shutil.rmtree(torch_include_directory)
+
 
 if __name__ == "__main__":
     main()

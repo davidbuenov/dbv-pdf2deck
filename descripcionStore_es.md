@@ -117,6 +117,18 @@ Convierte PDFs de solo imagen e infografías de IA en PowerPoint totalmente edit
 
 *(dejar en blanco — se usan los términos estándar de la Store, la app en sí es MIT)*
 
+### URL de la directiva de privacidad
+
+https://davidbuenov.github.io/dbv-pdf2deck/privacidad.html
+
+### URL del sitio web
+
+https://davidbuenov.com
+
+### URL de soporte y contacto
+
+https://github.com/davidbuenov/dbv-pdf2deck/issues
+
 ### Desarrollado por
 
 David Bueno Vallejo

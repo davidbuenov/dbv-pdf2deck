@@ -295,19 +295,36 @@ Configurado el 2026-08-29. Canal self-hosted por GitHub Releases con
 - [ ] Dar de alta los dos secretos de firma y **lanzar un tag de prueba** para
       verificar el ciclo completo: build → `latest.json` → botón «Buscar
       actualizaciones» encontrando la versión nueva.
-- [x] **Empaquetado MSIX** para Microsoft Store, wireado (2026-08-30) con `@choochmeque/tauri-windows-bundle`
-      (validado antes en `dbv-md-reader`, no inventado): `src-tauri/gen/windows/bundle.config.json` con
-      `identifier: "davidbuenov.DBVPDF2Deck"`, `publisher: "CN=13EE2A5D-F49E-48C9-8873-941069B15D63"`,
-      `publisherDisplayName: "davidbuenov"` — coinciden exactamente con lo reservado en Partner Center
-      (screenshot del usuario, PFN esperado `davidbuenov.DBVPDF2Deck_ze9zfmg3hs4tt`). `displayName` se
-      fija a `"dbv-pdf2deck"` (no `"DBV PDF2Deck"`) porque `tauri-windows-bundle` deriva el nombre del
-      `.exe` a empaquetar quitando solo espacios de `displayName` — con espacio buscaría
-      `DBVPDF2Deck.exe` y el binario real de Cargo es `dbv-pdf2deck.exe`; mismo truco que ya usa
-      `dbv-md-reader`. Build local verificado con `npm run tauri:windows:build -- --runner npm` (el
-      runner por defecto `cargo tauri` falla: no hay subcomando `cargo-tauri` instalado, solo el CLI de
-      npm `@tauri-apps/cli`): genera `dbv-pdf2deck_2.0.0.0.msixbundle` en `src-tauri/target/msix/`, con
-      `Identity Name`/`Publisher` confirmados byte a byte contra el manifiesto generado. Sin workflow de
-      CI para esto — igual que en `dbv-md-reader`, es un build local que se sube a mano a Partner Center.
+- [x] **Empaquetado MSIX** para Microsoft Store, wireado y verificado de extremo a extremo (2026-08-30)
+      con `@choochmeque/tauri-windows-bundle` (validado antes en `dbv-md-reader`, no inventado):
+      `src-tauri/gen/windows/bundle.config.json` con `identifier: "davidbuenov.DBVPDF2Deck"`,
+      `publisher: "CN=13EE2A5D-F49E-48C9-8873-941069B15D63"`, `publisherDisplayName: "davidbuenov"` —
+      coinciden exactamente con lo reservado en Partner Center (PFN esperado
+      `davidbuenov.DBVPDF2Deck_ze9zfmg3hs4tt`). `displayName` se fija a `"dbv-pdf2deck"` (no
+      `"DBV PDF2Deck"`) porque `tauri-windows-bundle` deriva el nombre del `.exe` a empaquetar quitando
+      solo espacios de `displayName` — con espacio buscaría `DBVPDF2Deck.exe` y el binario real de Cargo
+      es `dbv-pdf2deck.exe`; mismo truco que ya usa `dbv-md-reader`.
+      - **Dos rondas de fallos reales tras el primer build "exitoso" (que en realidad generaba un
+        `.msixbundle` vacío, sin avisar):**
+        1. `MakeAppx.exe` en modo directorio (`/d`) no sigue los *reparse points*: el propio copiado de
+           recursos de Tauri deja `Assets/`, `sidecar/` y `AppxManifest.xml` como symlinks de Windows, no
+           como carpetas/ficheros normales. Reproducido invocando `MakeAppx.exe` directamente, sin pasar
+           por ninguna herramienta de terceros — no es un bug de `tauri-windows-bundle`.
+        2. De paso, las licencias vendorizadas de PyTorch (`torch-2.13.0.dist-info/licenses/third_party/
+           kineto/.../third_party/...`) rozaban el límite de 260 caracteres de Windows. Podadas en
+           `packaging/build_sidecar.py` junto con `torch/include/` (62 MB de cabeceras C++ nunca usadas
+           en tiempo de ejecución) — reduce el sidecar de 870 MB a ~790 MB y de paso evita ese límite.
+      - **Solución definitiva**: `packaging/build_msix.mjs` (nuevo, `npm run tauri:windows:msix`) genera
+        un fichero de mapeo (`MakeAppx.exe pack /f mapping.txt`) recorriendo el `AppxContent` con
+        `fs.statSync` (que sigue symlinks) en vez de depender del recorrido de directorio de MakeAppx.
+        Flujo completo: `npm run tauri:windows:build` (prepara `src-tauri/target/appx/x64`) → `npm run
+        tauri:windows:msix` (empaqueta con mapeo + genera el `.msixbundle`).
+      - **Verificado de extremo a extremo, no solo "compila":** `.msixbundle` de 309 MB (el vacío de
+        antes eran 5,8 MB), `Identity Name`/`Publisher` confirmados byte a byte contra el manifiesto,
+        y — la prueba real — el `.msix` se desempaquetó (`MakeAppx unpack`) y el sidecar extraído de ahí
+        arrancó y `/health` respondió `ocr_ready: true`.
+      - Sin workflow de CI para esto — igual que en `dbv-md-reader`, es un build local que se sube a mano
+        a Partner Center.
 - [x] **macOS: descartado Mac App Store.** El canal de macOS es **Uptodown**, igual que el resto del
       portfolio — decisión del usuario en la conversación del 2026-08-29. Sin certificado Apple
       Developer, sin notarización, sin revisión de tienda para esta plataforma.
