@@ -14,11 +14,15 @@
     <!-- Política de Seguridad: Conexión a backend local en cualquier puerto asignado -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: blob:;">
     
-    <link rel="stylesheet" href="styles.css?v=4">
+    <link rel="stylesheet" href="styles.css?v=5">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
     
     <script src="i18n.js?v=2"></script>
     <script src="api.js?v=3" defer></script>
-    <script src="canvas_engine.js?v=12" defer></script>
+    <script src="canvas_engine.js?v=14" defer></script>
     <script src="main.js?v=7" defer></script>
     <script src="help_content.js?v=1" defer></script>
     <script src="desktop_shell.js?v=4" defer></script>
@@ -222,7 +226,11 @@
 
         <!-- Barra flotante de multi-selección (2 o más bloques seleccionados) -->
         <div id="multi-toolbar" class="floating-toolbar glass-panel multi-toolbar" hidden>
-            <h4 id="mtb-title" data-i18n="multi.title">📐 Multi-Selección</h4>
+            <!-- Sin data-i18n: el texto incluye el recuento de bloques, que
+                 solo triggerMultiSelectToolbar() conoce en el momento de abrir
+                 el panel. Con data-i18n aquí, cada cambio de idioma reescribía
+                 esto con la plantilla "{count}" sin sustituir. -->
+            <h4 id="mtb-title">📐 Multi-Selección</h4>
 
             <!-- Alineación -->
             <div class="toolbar-field">
@@ -268,17 +276,22 @@
 
             <!-- Acciones -->
             <div class="toolbar-actions">
+                <button type="button" id="mtb-btn-merge" class="btn" data-i18n="multi.merge" data-i18n-title="multi.mergeTitle" title="Fusionar los bloques seleccionados en uno solo">🔗 Fusionar bloques</button>
                 <button type="button" id="mtb-btn-delete" class="btn btn-danger" data-i18n="multi.delete">Eliminar seleccionados</button>
             </div>
         </div>
 
-        <!-- Overlay de edición inline: contenedor para editor enriquecido -->
-        <div id="inline-editor-container" class="inline-editor-container" hidden>
-            <div id="inline-block-editor" class="inline-block-editor" contenteditable="true" spellcheck="false" role="textbox" aria-multiline="true"></div>
-        </div>
+        <!-- Editor de edición en sitio. Sin contenedor envolvente: JavaScript lo
+             reubica dentro de #canvas-wrapper al abrir la edición, porque se
+             posiciona en coordenadas relativas a ese contenedor. Envolverlo en
+             un <div hidden> lo dejaba invisible por mucho que se mostrara. -->
+        <div id="inline-block-editor" class="inline-block-editor" contenteditable="true" spellcheck="false" role="textbox" aria-multiline="true" hidden></div>
 
-        <!-- Barra flotante contextual inline (Word-like) -->
-        <div id="inline-block-toolbar" class="inline-block-toolbar glass-panel" hidden role="toolbar" aria-label="Formato de bloque">
+        <!-- Barra flotante contextual inline (Word-like). Sin glass-panel: esa
+             clase la pinta oscura y translúcida, y el diseño de esta barra es
+             claro y compacto (ver .inline-block-toolbar en styles.css). -->
+        <div id="inline-block-toolbar" class="inline-block-toolbar" hidden role="toolbar" aria-label="Formato de bloque">
+            <span class="ib-grip" title="Arrastrar la barra" aria-hidden="true">⠿</span>
             <select id="ib-font" class="ib-select" title="Tipografía">
                 <option value="system-ui">System Default</option>
                 <option value="Arial">Arial</option>

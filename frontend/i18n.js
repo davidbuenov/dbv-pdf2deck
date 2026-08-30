@@ -101,6 +101,8 @@
             'multi.textColor': 'Color texto',
             'multi.bgColor': 'Color fondo',
             'multi.bgTransparent': 'Fondo transparente',
+            'multi.merge': '🔗 Fusionar bloques',
+            'multi.mergeTitle': 'Fusionar los bloques seleccionados en uno solo',
             'multi.delete': 'Eliminar seleccionados (Supr)',
 
             'about.title': 'Acerca de DBV PDF2Deck',
@@ -226,6 +228,8 @@
             'multi.textColor': 'Text color',
             'multi.bgColor': 'Background color',
             'multi.bgTransparent': 'Transparent bg',
+            'multi.merge': '🔗 Merge blocks',
+            'multi.mergeTitle': 'Merge the selected blocks into one',
             'multi.delete': 'Delete selected (Del)',
 
             'about.title': 'About DBV PDF2Deck',

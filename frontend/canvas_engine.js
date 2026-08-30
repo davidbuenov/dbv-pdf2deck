@@ -580,9 +580,18 @@ let selectionMarquee = null;
 let inlineEditorSession = null;
 let inlineEditOpaqueMode = true;
 let inlineToolbarPointerDown = false;
+// Se pone a true en cuanto el usuario arrastra la barra inline, para que deje
+// de reanclarse sola sobre el bloque. Se reinicia al abrir otra edición.
+let inlineToolbarMoved = false;
 
 function _inlineToolbarElement() {
-    const toolbar = document.getElementById("inline-toolbar");
+    // El contenedor real en index.html es "inline-block-toolbar" (renombrado en
+    // el rediseño del shell); esta función seguía buscando el id antiguo
+    // "inline-toolbar", que ya no existe. Al no encontrarlo nunca, `toolbar`
+    // era siempre null y `toolbar.hidden = false` no se llegaba a ejecutar en
+    // ningún sitio: la barra de fuente/tamaño/color de la edición en sitio
+    // existía en el DOM pero jamás se mostraba.
+    const toolbar = document.getElementById("inline-block-toolbar");
     const wrapper = document.getElementById("canvas-wrapper");
     if (toolbar && wrapper && toolbar.parentElement !== wrapper) {
         wrapper.appendChild(toolbar);
@@ -655,6 +664,60 @@ function _makeToolbarDraggable(toolbarId) {
     toolbar.dataset.dragEnabled = "true";
 }
 
+/**
+ * Hace arrastrable la barra de edición en sitio tirando de su asa.
+ *
+ * No reutiliza `_makeToolbarDraggable()` porque aquella exige un `<h4>` como
+ * asa y esta barra es una fila compacta sin título. Además, aquí hay que
+ * desactivar el reposicionamiento automático en cuanto el usuario la mueve: si
+ * no, el siguiente `_positionInlineEditor()` la devolvería de un salto sobre el
+ * bloque y el arrastre no serviría de nada.
+ */
+function _makeInlineToolbarDraggable() {
+    const toolbar = _inlineToolbarElement();
+    if (!toolbar || toolbar.dataset.dragEnabled === "true") return;
+
+    const handle = toolbar.querySelector(".ib-grip");
+    if (!handle) return;
+
+    const wrapper = document.getElementById("canvas-wrapper");
+    if (!wrapper) return;
+
+    let dragging = false;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    const onMouseMove = (evt) => {
+        if (!dragging) return;
+        const wrapperRect = wrapper.getBoundingClientRect();
+        const maxLeft = wrapper.clientWidth - toolbar.offsetWidth - 8;
+        const maxTop = wrapper.clientHeight - toolbar.offsetHeight - 8;
+        const nextLeft = Math.max(8, Math.min(maxLeft, evt.clientX - wrapperRect.left - offsetX));
+        const nextTop = Math.max(8, Math.min(maxTop, evt.clientY - wrapperRect.top - offsetY));
+        toolbar.style.left = `${nextLeft}px`;
+        toolbar.style.top = `${nextTop}px`;
+    };
+
+    const stopDragging = () => {
+        dragging = false;
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", stopDragging);
+    };
+
+    handle.addEventListener("mousedown", (evt) => {
+        evt.preventDefault();
+        dragging = true;
+        inlineToolbarMoved = true;
+        const rect = toolbar.getBoundingClientRect();
+        offsetX = evt.clientX - rect.left;
+        offsetY = evt.clientY - rect.top;
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", stopDragging);
+    });
+
+    toolbar.dataset.dragEnabled = "true";
+}
+
 function _ensureInlineEditorElement() {
     const wrapper = document.getElementById("canvas-wrapper");
     if (!wrapper) return null;
@@ -665,7 +728,18 @@ function _ensureInlineEditorElement() {
         editor.id = "inline-block-editor";
         editor.className = "inline-block-editor";
         editor.contentEditable = "true";
+        editor.spellcheck = false;
+        editor.setAttribute("role", "textbox");
+        editor.setAttribute("aria-multiline", "true");
         editor.hidden = true;
+        wrapper.appendChild(editor);
+    }
+
+    // `_positionInlineEditor()` calcula left/top relativos a #canvas-wrapper, así
+    // que el editor tiene que colgar de él. Viniendo del HTML cuelga de <main>:
+    // sin reubicarlo, las coordenadas se aplican contra otro origen y el editor
+    // aparece descolocado (además de heredar el `hidden` de su contenedor).
+    if (editor.parentElement !== wrapper) {
         wrapper.appendChild(editor);
     }
     return editor;
@@ -702,7 +776,7 @@ function _positionInlineEditor() {
     editor.style.fontSize = `${Math.max(8, (block.font_size || 16) * rect.scaleY)}px`;
 
     const toolbar = _inlineToolbarElement();
-    if (toolbar && !toolbar.hidden) {
+    if (toolbar && !toolbar.hidden && !inlineToolbarMoved) {
         const wrapper = document.getElementById("canvas-wrapper");
         if (wrapper) {
             const desiredTop = rect.top - toolbar.offsetHeight - 8;
@@ -923,6 +997,11 @@ function _bindInlineToolbarEvents() {
         if (transp) block.bg_transparent = !!transp.checked;
         block.is_modified = true;
         _applyInlineEditorVisuals();
+        // El lienzo también refleja el cambio al momento: sin esto, tocar W/H
+        // movía el editor pero dejaba la caja pintada con el tamaño anterior
+        // hasta cerrar y volver a abrir la edición.
+        repaintCanvas();
+        _positionInlineEditor();
     };
 
     ["ib-font", "ib-size", "ib-line-spacing", "ib-width", "ib-height", "ib-color", "ib-bg", "ib-bg-transparent"].forEach(id => {
@@ -1039,9 +1118,13 @@ function startInlineBlockEdit(blocks, targetIndex, ctxScope) {
     }
 
     _bindInlineToolbarEvents();
+    // Cada bloque nuevo reancla la barra sobre él; si el usuario la había
+    // arrastrado, esa posición solo valía para la edición anterior.
+    inlineToolbarMoved = false;
     const toolbar = _inlineToolbarElement();
     if (toolbar) {
         toolbar.hidden = false;
+        _makeInlineToolbarDraggable();
     }
 
     editor.hidden = false;
@@ -2129,6 +2212,11 @@ function bindFloatingToolbarEvents() {
     }
 
     // ── Multi-toolbar bindings ──
+    // `mt-close` y `mt-equalize` no tienen botón equivalente en el HTML actual
+    // (`mtb-*`): "Cerrar" y "Igualar Estilos" (tamaño de fuente común) se
+    // quedaron fuera del rediseño del panel. Los bindings de abajo no
+    // encuentran el elemento y no hacen nada; se dejan documentados en vez de
+    // borrados por si se decide reintroducir esos botones más adelante.
     const mtClose = document.getElementById("mt-close");
     if (mtClose) mtClose.onclick = () => {
         document.getElementById("multi-toolbar").hidden = true;
@@ -2150,9 +2238,17 @@ function bindFloatingToolbarEvents() {
         equalizeSelectedFontSize(globalPayload.pages[currentActivePageIndex].blocks, [...selectedBlockIndices], styles);
     };
 
-    const mtMerge = document.getElementById("mt-merge");
+    // "Fusionar" y "Eliminar seleccionados" sí tienen botón en el HTML actual
+    // (`mtb-btn-merge`, `mtb-btn-delete`), pero buscaban el id antiguo
+    // (`mt-merge`) o no estaban conectados en absoluto.
+    const mtMerge = document.getElementById("mtb-btn-merge");
     if (mtMerge) mtMerge.onclick = () => {
         mergeSelectedBlocks(globalPayload.pages[currentActivePageIndex].blocks, [...selectedBlockIndices]);
+    };
+
+    const mtbDelete = document.getElementById("mtb-btn-delete");
+    if (mtbDelete) mtbDelete.onclick = () => {
+        deleteActiveBlocks();
     };
 
     // ── Alignment buttons — toolbar individual ──
@@ -2250,8 +2346,16 @@ function triggerMultiSelectToolbar(blocks, selectedIndices, domX, domY) {
     const toolbar = document.getElementById("multi-toolbar");
     if (!toolbar) return;
 
-    const countEl = document.getElementById("mt-count");
-    if (countEl) countEl.textContent = `${selectedIndices.length} bloques seleccionados`;
+    // El título vive sin `data-i18n` a propósito: ese atributo hace que
+    // `applyTranslations()` lo reescriba con la plantilla cruda "{count}"
+    // sin sustituir en cada cambio de idioma. Aquí se interpola siempre con
+    // el recuento real, que es la única fuente de verdad mientras el panel
+    // está abierto.
+    const titleEl = document.getElementById("mtb-title");
+    if (titleEl) {
+        const _t = (k, v) => window.DBV_I18N ? window.DBV_I18N.t(k, v) : k;
+        titleEl.textContent = _t("multi.title", { count: selectedIndices.length });
+    }
 
     // Calcular tamaño medio como sugerencia inicial
     const sizes = selectedIndices.map(idx => blocks[idx]?.font_size || 16);

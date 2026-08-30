@@ -24,6 +24,7 @@
     ejercitar todavía**: faltan los secretos en GitHub y un tag de prueba.
   - **Corrección de Canvas en Blanco / ReferenceError `bindDualPage` y dimensiones `safeCanvas` (2026-08-29)**: Se eliminó el error tipográfico `bindDualPage` en `canvas_engine.js` que abortaba la inicialización de paginación antes de pintar el lienzo, y se asignaron dimensiones explícitas al clon del canvas para respetar el tamaño natural de la imagen en lugar del default de 300×150 px.
   - **Internacionalización ES/EN implementada (2026-08-29)**: Creado `frontend/i18n.js` con el patrón probado de `dbv-md-reader` (Vanilla JS + IIFE + `data-i18n` + `window.DBV_I18N`), selector de idioma `EN | ES` en la barra superior y persistencia en `localStorage`.
+  - **Identidad Corporativa y Kit de Iconos para Tiendas (2026-08-30)**: Diseñado y generado el logotipo oficial (*Iconic Dock Glyph* con silueta PDF y diapositivas neón holográficas). Creada toda la suite de iconos de producción para Tauri (`src-tauri/icons/`: `.ico` multi-capa 16–256px, `.icns` macOS, Square30 a Square310 y StoreLogo), web (`frontend/`: `favicon.ico`, `favicon-16/32`, `apple-touch-icon`, `android-chrome-192/512`), empaquetado de tiendas (`packaging/assets/app_icons/` y `docs/logos_final/`) y banner promocional panorámico para tiendas (1280×640 px).
   - **Flujo Nuevo / Abrir Documento (2026-08-29)**: Botón «Nuevo» (`#btn-new-file` / `Ctrl+N`) para volver al panel de carga/drag & drop y botón «Abrir» (`#btn-open-file` / `Ctrl+O`) para abrir el selector de archivos del sistema directamente.
 * **Próximo paso — retomar aquí**: ver «📍 Snapshot de contexto — 2026-08-29, conversación sobre tiendas»
   justo debajo del backlog de escritorio.
@@ -296,6 +297,71 @@ decisión, más el cableado del updater (commit `e2f1627`, ya en el árbol).
    scaffoldar el empaquetado MSIX; sin esos valores exactos el manifiesto no puede generarse.
 4. Empaquetar con `@choochmeque/tauri-windows-bundle` (o equivalente) siguiendo el patrón ya validado en
    `dbv-md-reader`.
+
+---
+
+## 🩹 Regresiones de UI del rediseño del shell — corregidas el 2026-08-30
+
+**Causa raíz única para las cuatro.** En `b329ca2` se rediseñó el marcado de las barras flotantes y se
+renombraron sus identificadores, pero no se actualizaron ni el CSS ni el JavaScript que los
+referenciaban. En HTML/CSS/JS un identificador que no existe **no lanza error**: `getElementById()`
+devuelve `null` y el `if (elemento)` de guarda lo traga; un selector CSS sin elemento simplemente no
+aplica. Resultado: funcionalidad que desaparece en silencio y sobrevive tres commits sin que nada falle
+en consola.
+
+- [x] **La barra de edición en sitio no aparecía nunca.** `_inlineToolbarElement()` buscaba
+      `"inline-toolbar"`; el elemento pasó a llamarse `"inline-block-toolbar"`. Al devolver siempre
+      `null`, el `toolbar.hidden = false` no se ejecutaba en ningún punto del código: la barra con
+      fuente, tamaño, negrita, cursiva, subrayado, color y alineación existía en el DOM pero jamás se
+      mostraba. Se percibió como «se han eliminado todas las opciones de edición».
+- [x] **La barra salía sin estilo y descolocada.** Las reglas de `styles.css` seguían escritas para
+      `.inline-toolbar` mientras el elemento usaba `.inline-block-toolbar`. Sin `position: absolute`,
+      las asignaciones `style.left/top` que sí hacía el JS no tenían ningún efecto — un elemento
+      estático las ignora — y la barra caía en el flujo del documento. Llevaba además `glass-panel`,
+      que la pinta oscura y translúcida contra un diseño pensado en claro.
+- [x] **No se podía editar el texto.** El editor `contenteditable` quedó envuelto en un
+      `<div id="inline-editor-container" hidden>` que **nada en el código quitaba nunca**, y además
+      fuera de `#canvas-wrapper`, que es el origen contra el que `_positionInlineEditor()` calcula sus
+      coordenadas. El editor se mostraba, pero dentro de un padre oculto. Se eliminó el contenedor y
+      `_ensureInlineEditorElement()` reubica el editor dentro del wrapper al abrir la edición.
+- [x] **El contador de multi-selección mostraba `{count}` sin sustituir.** El `<h4>` llevaba
+      `data-i18n="multi.title"`, así que `applyTranslations()` lo reescribía con la plantilla cruda en
+      cada cambio de idioma. La interpolación con el recuento real solo la puede hacer
+      `triggerMultiSelectToolbar()`, que es quien lo conoce: se le quitó el `data-i18n`.
+- [x] **«Fusionar» y «Eliminar seleccionados» no hacían nada.** `mergeSelectedBlocks()` seguía viva pero
+      el HTML rediseñado no incluyó botón equivalente a `mt-merge`; y `mtb-btn-delete` nunca llegó a
+      cablearse (solo funcionaba la tecla Supr, por un atajo global independiente). Se añadió
+      `mtb-btn-merge` con sus claves i18n y se conectaron ambos.
+
+**Mejoras añadidas de paso** (no eran regresiones, verificado en el histórico — nunca existieron):
+
+- [x] La barra de edición en sitio es **arrastrable** por un asa `⠿`. No reutiliza
+      `_makeToolbarDraggable()` porque aquella exige un `<h4>` como asa y esta barra es una fila
+      compacta. Al arrastrarla se activa `inlineToolbarMoved`, que desactiva el reanclado automático
+      sobre el bloque; se reinicia al abrir la edición de otro bloque.
+- [x] Los controles **repintan el lienzo al momento** (`repaintCanvas()` en `applyCurrentControls()`).
+      Antes, cambiar W/H movía el editor pero dejaba la caja pintada con el tamaño anterior hasta
+      cerrar y reabrir la edición.
+
+### ⚠️ Regla para no repetirlo
+
+Renombrar un `id` o una `class` en `index.html` es un cambio de **tres ficheros**, no de uno: hay que
+barrer `canvas_engine.js` (y `desktop_shell.js`) y `styles.css` en el mismo commit. La verificación es
+barata y conviene repetirla tras cualquier rediseño de marcado — comparar el conjunto de `id="..."` del
+HTML contra los `getElementById("...")` del JS, y las clases del HTML contra los selectores del CSS.
+Tras esta corrección quedan sin pareja únicamente los `tb-*` y los `mt-close` / `mt-equalize`, que son
+código muerto ya anotado en la deuda técnica de abajo.
+
+### Pendiente de esta zona
+
+- [ ] Los seis botones de **alineación de objetos** (`mtb-align-*`) y los cuatro de **distribución**
+      (`mtb-distrib-*`, `mtb-same-*`) del panel de multi-selección están en el HTML y en el diccionario
+      i18n, pero **nunca tuvieron JavaScript**: no es una regresión, es funcionalidad planificada que
+      quedó a medias. Alinear/distribuir la posición de los bloques entre sí, no el texto dentro de
+      ellos.
+- [ ] «Igualar Estilos» (tamaño de fuente común) y el botón «Cerrar» del panel de multi-selección se
+      quedaron fuera del rediseño: `equalizeSelectedFontSize()` sigue implementada y su binding
+      documentado, pero no hay botón que la invoque.
 
 ---
 

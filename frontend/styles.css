@@ -769,7 +769,11 @@ select {
     box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.35), 0 10px 24px rgba(2, 6, 23, 0.45);
 }
 
-.inline-toolbar {
+/* Emparejada con id="inline-block-toolbar" en index.html. Si se renombra la
+   clase allí hay que renombrarla aquí: el desajuste no da error, simplemente
+   deja la barra sin posicionar (queda en el flujo del documento, al lado del
+   lienzo) y sin ningún estilo. */
+.inline-block-toolbar {
     position: absolute;
     z-index: 960;
     display: flex;
@@ -783,8 +787,8 @@ select {
     box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
 }
 
-.inline-toolbar select,
-.inline-toolbar input[type="number"] {
+.inline-block-toolbar select,
+.inline-block-toolbar input[type="number"] {
     background: #ffffff;
     color: #111827;
     border: 1px solid #cfd6e2;
@@ -794,17 +798,30 @@ select {
     font-size: 13px;
 }
 
-.inline-toolbar select {
+.inline-block-toolbar select {
     max-width: 110px;
 }
 
-.inline-toolbar input[type="number"] {
+.inline-block-toolbar input[type="number"] {
     width: 64px;
 }
 
-.inline-toolbar input.ib-dim {
+.inline-block-toolbar input.ib-dim {
     width: 58px;
     font-size: 12px;
+}
+
+.ib-grip {
+    cursor: grab;
+    user-select: none;
+    color: #9aa4b8;
+    font-size: 15px;
+    line-height: 1;
+    padding: 0 2px;
+}
+
+.ib-grip:active {
+    cursor: grabbing;
 }
 
 .ib-dim-wrap {
