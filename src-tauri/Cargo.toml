@@ -1,6 +1,6 @@
 [package]
 name = "dbv-pdf2deck"
-version = "1.5.0"
+version = "2.0.0"
 description = "DBV PDF2Deck - editable presentations from PDFs and images"
 authors = ["David Bueno Vallejo"]
 edition = "2021"

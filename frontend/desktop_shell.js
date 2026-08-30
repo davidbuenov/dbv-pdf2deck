@@ -11,7 +11,7 @@
 
 (() => {
 
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "2.0.0";
 
 const runningInTauri = !!window.dbvApi?.runningInTauri;
 const $ = (id) => document.getElementById(id);

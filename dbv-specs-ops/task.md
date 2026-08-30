@@ -237,6 +237,18 @@ Configurado el 2026-08-29. Canal self-hosted por GitHub Releases con
       **no está construida todavía**, y es prerrequisito de cualquier envío a
       tienda, no pulido posterior. El tamaño en sí **no es el bloqueo de política**: el límite MSIX es
       25 GB por paquete, muy por encima de lo que hace falta (verificado en la snapshot de abajo).
+- [x] **Fichas de contenido para las dos tiendas redactadas (2026-08-30)**: `descripcionStore_es.md` /
+      `_en.md` (Microsoft Store) y `descripcionStoreUptoDown_es.md` / `_en.md` (Uptodown, canal de
+      macOS), en la raíz del repo, siguiendo el patrón validado en `dbv-md-reader`. **No enviar
+      todavía** — cada fichero lleva su propio bloque de aviso con los bloqueantes reales: no existe
+      empaquetado MSIX ni build de macOS, `gh release list` no devuelve nada, y falta el asistente de
+      primer arranque del punto anterior. Son ficha de contenido lista para copiar, no confirmación de
+      que ya se puede certificar.
+- [x] **Versión sincronizada a 2.0.0 (2026-08-30)** en los cuatro sitios de la DoD de §7 de
+      `NATIVE_DESKTOP_APPS.md`: `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` y
+      `APP_VERSION` en `frontend/desktop_shell.js` (panel "Acerca de"). Bump a mayor, no a minor: motor
+      de OCR nuevo, exportación con DPI configurable, Goma Mágica, interfaz de escritorio completa y
+      disponibilidad como app nativa — no es una entrega incremental sobre 1.x.
 
 ---
 
