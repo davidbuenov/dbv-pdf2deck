@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DBV PDF2Deck — Kit Oficial de Logotipos e Iconos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0d14;
+      --card-bg: rgba(22, 27, 46, 0.8);
+      --border: rgba(255, 255, 255, 0.1);
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.3);
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 40px 24px;
+      background-image: 
+        radial-gradient(circle at 20% 15%, rgba(99, 102, 241, 0.15), transparent 40%),
+        radial-gradient(circle at 80% 70%, rgba(56, 189, 248, 0.12), transparent 40%);
+      background-attachment: fixed;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    header { text-align: center; margin-bottom: 40px; }
+    .badge {
+      display: inline-block;
+      padding: 6px 16px;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    h1 {
+      font-size: 42px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #ffffff 40%, #38bdf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 12px;
+    }
+    p.subtitle { color: var(--text-muted); font-size: 18px; }
+    .section {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 30px;
+      margin-bottom: 30px;
+      backdrop-filter: blur(16px);
+    }
+    .section-title {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+    }
+    .icon-card {
+      background: rgba(11, 13, 20, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 16px;
+      padding: 20px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .icon-card img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 12px;
+      margin-bottom: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .icon-name { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+    .icon-dim { color: var(--text-muted); font-size: 13px; font-family: 'JetBrains Mono', monospace; }
+    .banner-preview img {
+      width: 100%;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 16px 40px rgba(0,0,0,0.6);
+    }
+    .file-list {
+      margin-top: 16px;
+      background: rgba(0,0,0,0.3);
+      border-radius: 12px;
+      padding: 16px 20px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: #cbd5e1;
+      line-height: 1.8;
+    }
+    .file-list span { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge">Asset Production Suite</div>
+      <h1>DBV PDF2Deck · Kit Oficial de Iconos</h1>
+      <p class="subtitle">Paquete completo de assets para Tauri v2, Windows Store, macOS, Linux, Web y Tiendas de Aplicaciones.</p>
+    </header>
+
+    <!-- Banner Promocional -->
+    <div class="section">
+      <div class="section-title">🎨 Banner Promocional para Tiendas (1280×640 px)</div>
+      <div class="banner-preview">
+        <img src="store_banner_1280x640.png" alt="Banner Oficial">
+      </div>
+    </div>
+
+    <!-- Tamaños Principales -->
+    <div class="section">
+      <div class="section-title">📐 Resoluciones Maestras de Tiendas</div>
+      <div class="grid">
+        <div class="icon-card">
+          <img src="app_icon_512x512.png" width="160" height="160" alt="512px">
+          <div class="icon-name">High-Res Store</div>
+          <div class="icon-dim">1024 / 512 px</div>
+        </div>
+        <div class="icon-card">
+          <img src="app_icon_256x256.png" width="128" height="128" alt="256px">
+          <div class="icon-name">Desktop & Cards</div>
+          <div class="icon-dim">256×256 px</div>
+        </div>
+        <div class="icon-card">
+          <img src="app_icon_128x128.png" width="96" height="96" alt="128px">
+          <div class="icon-name">App Launcher</div>
+          <div class="icon-dim">128×128 px</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Glifo Simplificado para Micro-resoluciones (16px a 64px) -->
+    <div class="section">
+      <div class="section-title">🔍 Versión Simplificada para Micro-resoluciones (16px – 64px)</div>
+      <p style="color: var(--text-muted); font-size: 15px; margin-bottom: 20px;">
+        Para evitar empaste a tamaños diminutos, se emplea una silueta vectorial con trazos ultra-gruesos, sin textos finos ni líneas que se degraden. Integrado en <b>favicon.ico</b>, <b>favicon.png</b>, <b>taskbar</b> y capas 16-64px del <b>.ico</b> híbrido.
+      </p>
+      <div class="grid">
+        <div class="icon-card">
+          <img src="glyph_simplified_1024.png" width="120" height="120" alt="Glifo Master">
+          <div class="icon-name">Glifo Vectorial</div>
+          <div class="icon-dim">Master 1024 px</div>
+        </div>
+        <div class="icon-card">
+          <img src="glyph_v2_64x64.png" width="64" height="64" alt="64px">
+          <div class="icon-name">Taskbar / Dock</div>
+          <div class="icon-dim">64×64 px</div>
+        </div>
+        <div class="icon-card">
+          <img src="glyph_v2_48x48.png" width="48" height="48" alt="48px">
+          <div class="icon-name">Medium Tray</div>
+          <div class="icon-dim">48×48 px</div>
+        </div>
+        <div class="icon-card">
+          <img src="glyph_v2_32x32.png" width="32" height="32" alt="32px">
+          <div class="icon-name">Favicon & Tray</div>
+          <div class="icon-dim">32×32 px</div>
+        </div>
+        <div class="icon-card">
+          <img src="glyph_v2_16x16.png" width="16" height="16" alt="16px">
+          <div class="icon-name">Micro Favicon</div>
+          <div class="icon-dim">16×16 px</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ubicación de Ficheros -->
+    <div class="section">
+      <div class="section-title">📁 Ficheros Generados e Instalados en el Proyecto</div>
+      <div class="file-list">
+        <div><span>src-tauri/icons/</span> → 32x32, 128x128, 128x128@2x, icon.png (512px), icon.ico (16 a 256px), icon.icns, StoreLogo, Square30 a Square310</div>
+        <div><span>frontend/</span> → favicon.ico, favicon-16x16, favicon-32x32, apple-touch-icon, android-chrome-192, android-chrome-512, logo.png</div>
+        <div><span>packaging/assets/app_icons/</span> → Suite completa de tiendas (16px a 1024px, banner 1280x640)</div>
+        <div><span>docs/logos_final/</span> → Copias maestras de referencia y banner promocional</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
