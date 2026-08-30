@@ -21,6 +21,7 @@ opencv-python-headless>=4.10.0
 
 # Motor de OCR estable con soporte CUDA (GPU) o CPU
 easyocr>=1.7.1
+tqdm
 torch
 torchvision
 torchaudio
