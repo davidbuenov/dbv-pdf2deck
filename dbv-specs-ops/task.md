@@ -60,7 +60,8 @@
       5. `05_export_modal_powerpoint_*.png`: Menú de exportación desplegado con opciones PPTX (150–600 DPI), PDF vectorial y Markdown.
     - Sincronizadas las fichas `descripcionStore_es.md`, `descripcionStore_en.md`, `descripcionStoreUptoDown_es.md`, `descripcionStoreUptoDown_en.md` y `README.md` a la versión **2.0.0** con la galería de assets completa.
     - Generadas versiones PNG sin pérdidas de los banners promocionales (`hero_featured_banner_*.png` en 1376×768 y 1920×1080) para Microsoft Store.
-    - Creados los documentos oficiales de política de privacidad bilingües (`privacidad.html` y `privacy.html`) con diseño responsivo oscuro Zero-Cloud Privacy y enlazados a las fichas de tienda.
+    - Creados los documentos oficiales de política de privacidad bilingües (`privacidad.html` y `privacy.html`) con diseño responsivo oscuro Zero-Cloud Privacy y desplegados en GitHub Pages.
+  - **🚀 Envío a la Tienda Completado (2026-08-30)**: Paquete MSIX v2.0.0, metadatos, assets promocionales, capturas nativas y directivas de privacidad enviados con éxito a **Microsoft Partner Center** para su certificación y publicación en Microsoft Store.
 
 ---
 
